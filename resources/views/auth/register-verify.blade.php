@@ -24,7 +24,7 @@
                 </div>
             @endif
 
-            <form method="POST" action="{{ route('register.verify.submit') }}" class="space-y-4">
+            <form method="POST" action="/register/verify" class="space-y-4">
                 @csrf
                 <label class="block text-sm font-medium text-gray-700">Enter 6-digit OTP</label>
                 <input type="text" name="otp" placeholder="000000" maxlength="6" pattern="[0-9]{6}"
@@ -34,7 +34,7 @@
                 </button>
             </form>
 
-            <form method="POST" action="{{ route('register.resend-otp') }}" class="mt-4 text-center">
+            <form method="POST" action="/register/resend-otp" class="mt-4 text-center">
                 @csrf
                 <button type="submit" class="text-fb-blue text-sm hover:underline">Resend OTP</button>
             </form>

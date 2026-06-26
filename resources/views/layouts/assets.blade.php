@@ -34,6 +34,16 @@
         .input-field:focus { outline: none; box-shadow: 0 0 0 2px #6366F1; }
     </style>
     <script>
+        window.togglePassword = function (inputId, btn) {
+            const input = document.getElementById(inputId);
+            if (!input) return;
+            const show = input.type === 'password';
+            input.type = show ? 'text' : 'password';
+            btn.querySelector('.eye-open')?.classList.toggle('hidden', show);
+            btn.querySelector('.eye-closed')?.classList.toggle('hidden', !show);
+            btn.setAttribute('aria-label', show ? 'Hide password' : 'Show password');
+        };
+
         document.addEventListener('DOMContentLoaded', () => {
             const countEl = document.getElementById('notification-count');
             const toastEl = document.getElementById('notification-toast');

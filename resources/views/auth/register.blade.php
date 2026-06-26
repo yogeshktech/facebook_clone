@@ -19,7 +19,7 @@
                 </div>
             @endif
 
-            <form method="POST" action="{{ route('register.send-otp') }}" class="space-y-4">
+            <form method="POST" action="/register/send-otp" class="space-y-4">
                 @csrf
                 <input type="text" name="name" value="{{ old('name') }}" placeholder="Full name"
                     class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-fb-blue" required>
@@ -28,10 +28,8 @@
                 <input type="tel" name="phone" value="{{ old('phone') }}" placeholder="Mobile (10 digits, e.g. 9876543210)"
                     class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-fb-blue"
                     pattern="[6-9][0-9]{9}" maxlength="10" required>
-                <input type="password" name="password" placeholder="New password (min 8 chars)"
-                    class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-fb-blue" required>
-                <input type="password" name="password_confirmation" placeholder="Confirm password"
-                    class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-fb-blue" required>
+                <x-password-input name="password" placeholder="New password (min 8 chars)" />
+                <x-password-input name="password_confirmation" placeholder="Confirm password" />
                 <button type="submit" class="w-full bg-fb-green text-white py-3 rounded-lg font-semibold hover:bg-green-600 transition">
                     Send OTP to Email
                 </button>

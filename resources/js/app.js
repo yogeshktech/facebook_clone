@@ -1,5 +1,15 @@
 import './bootstrap';
 
+window.togglePassword = function (inputId, btn) {
+    const input = document.getElementById(inputId);
+    if (!input) return;
+    const show = input.type === 'password';
+    input.type = show ? 'text' : 'password';
+    btn.querySelector('.eye-open')?.classList.toggle('hidden', show);
+    btn.querySelector('.eye-closed')?.classList.toggle('hidden', !show);
+    btn.setAttribute('aria-label', show ? 'Hide password' : 'Show password');
+};
+
 // Live notification polling
 document.addEventListener('DOMContentLoaded', () => {
     const countEl = document.getElementById('notification-count');

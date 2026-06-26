@@ -11,6 +11,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Str;
+use Illuminate\Validation\ValidationException;
 use Illuminate\View\View;
 
 class RegisterController extends Controller
@@ -24,19 +25,23 @@ class RegisterController extends Controller
 
     public function sendOtp(Request $request): RedirectResponse
     {
-        $validated = $request->validate([
-            'name' => ['required', 'string', 'max:255'],
-            'email' => ['required', 'string', 'email', 'max:255', 'unique:users'],
-            'phone' => ['required', 'string', 'regex:/^[6-9]\d{9}$/', 'unique:users,phone'],
-            'password' => ['required', 'string', 'min:8', 'confirmed'],
-        ], [
-            'phone.regex' => 'Enter a valid 10-digit Indian mobile number.',
-        ]);
+        try {
+            $validated = $request->validate([
+                'name' => ['required', 'string', 'max:255'],
+                'email' => ['required', 'string', 'email', 'max:255', 'unique:users'],
+                'phone' => ['required', 'string', 'regex:/^[6-9]\d{9}$/', 'unique:users,phone'],
+                'password' => ['required', 'string', 'min:8', 'confirmed'],
+            ], [
+                'phone.regex' => 'Enter a valid 10-digit Indian mobile number.',
+            ]);
+        } catch (ValidationException $e) {
+            return redirect()->route('register')->withInput()->withErrors($e->errors());
+        }
 
         try {
             $this->otpService->generateAndSend($validated['email'], $validated['name']);
         } catch (\Throwable $e) {
-            return back()->withInput()->withErrors([
+            return redirect()->route('register')->withInput()->withErrors([
                 'email' => 'Failed to send OTP. Please check mail configuration. '.$e->getMessage(),
             ]);
         }

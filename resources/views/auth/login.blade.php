@@ -25,8 +25,7 @@
                 @csrf
                 <input type="text" name="login" value="{{ old('login') }}" placeholder="Email or Mobile Number"
                     class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-fb-blue" required>
-                <input type="password" name="password" placeholder="Password"
-                    class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-fb-blue" required>
+                <x-password-input name="password" placeholder="Password" />
                 <label class="flex items-center gap-2 text-sm text-gray-600">
                     <input type="checkbox" name="remember"> Remember me
                 </label>
