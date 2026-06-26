@@ -23,31 +23,38 @@ class MediaStorage
             return $path;
         }
 
-        foreach (['s3', 'public'] as $disk) {
-            try {
-                if (Storage::disk($disk)->exists($path)) {
-                    $configuredUrl = config('filesystems.disks.'.$disk.'.url');
-                    if ($configuredUrl) {
-                        return rtrim($configuredUrl, '/').'/'.ltrim($path, '/');
-                    }
+        $normalizedPath = ltrim($path, '/');
+        $awsUrl = config('filesystems.disks.s3.url');
+        $appUrl = config('app.url');
+        $mediaPublicUrl = config('filesystems.media_public_url');
 
-                    return Storage::disk($disk)->url($path);
-                }
-            } catch (\Throwable) {
-                continue;
-            }
+        if ($mediaPublicUrl) {
+            return rtrim($mediaPublicUrl, '/').'/'.$normalizedPath;
         }
 
-        $baseUrl = config('filesystems.disks.s3.url');
-        if ($baseUrl) {
-            return rtrim($baseUrl, '/').'/'.ltrim($path, '/');
+        if (
+            config('filesystems.media_disk') === 's3'
+            && $awsUrl
+            && is_string($appUrl)
+            && str_starts_with($appUrl, 'https://')
+            && str_starts_with($awsUrl, 'http://')
+        ) {
+            return rtrim($appUrl, '/').'/media/'.$normalizedPath;
         }
 
-        return Storage::disk('public')->url($path);
+        if ($awsUrl) {
+            return rtrim($awsUrl, '/').'/'.$normalizedPath;
+        }
+
+        return Storage::disk('public')->url($normalizedPath);
     }
 
     public static function store(UploadedFile $file, string $folder): string
     {
+        if (ImageCompressor::shouldCompress($file)) {
+            $file = ImageCompressor::compress($file);
+        }
+
         $primaryDisk = self::disk();
 
         try {

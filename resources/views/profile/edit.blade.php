@@ -40,4 +40,37 @@
         </form>
     </div>
 </div>
+<script>
+(function () {
+    const form = document.querySelector('form[action="{{ route('profile.update') }}"]');
+    if (!form) return;
+
+    let submitting = false;
+    form.addEventListener('submit', async function (e) {
+        if (submitting) return;
+
+        const avatarInput = form.querySelector('[name="avatar"]');
+        const coverInput = form.querySelector('[name="cover_photo"]');
+        if (!avatarInput?.files?.[0] && !coverInput?.files?.[0]) return;
+
+        e.preventDefault();
+        const submitBtn = form.querySelector('[type="submit"]');
+        submitBtn.disabled = true;
+
+        try {
+            if (avatarInput?.files?.[0]) {
+                window.replaceInputFile(avatarInput, await window.prepareMediaFile(avatarInput.files[0]));
+            }
+            if (coverInput?.files?.[0]) {
+                window.replaceInputFile(coverInput, await window.prepareMediaFile(coverInput.files[0]));
+            }
+            submitting = true;
+            form.submit();
+        } catch (error) {
+            alert(error.message || 'Could not upload photos.');
+            submitBtn.disabled = false;
+        }
+    });
+})();
+</script>
 @endsection

@@ -11,6 +11,7 @@
 <body class="bg-fb-gray min-h-screen">
     @auth
         @include('layouts.navbar')
+        @include('layouts.mobile-nav')
     @endauth
 
     @if(session('success'))
@@ -24,12 +25,12 @@
         </div>
     @endif
 
-    <main class="@auth pt-16 @endauth">
+    <main class="@auth pt-16 pb-[4.5rem] md:pb-0 @endauth">
         @yield('content')
     </main>
 
     @auth
-        <div id="notification-toast" class="hidden fixed bottom-4 right-4 z-50 bg-white rounded-lg shadow-xl p-4 max-w-sm border-l-4 border-fb-blue"></div>
+        <div id="notification-toast" class="hidden fixed bottom-20 md:bottom-4 right-4 z-50 bg-white rounded-lg shadow-xl p-4 max-w-sm border-l-4 border-fb-blue"></div>
     @endauth
 </body>
 </html>

@@ -114,7 +114,7 @@ class ChatController extends Controller
 
         $validated = $request->validate([
             'body' => ['nullable', 'string', 'max:5000'],
-            'media' => ['nullable', 'file', 'mimes:jpg,jpeg,png,gif,webp,mp4,webm', 'max:51200'],
+            'media' => ['nullable', 'file', 'mimes:jpg,jpeg,png,gif,webp,mp4,webm', 'max:5120'],
         ]);
 
         if (! $request->filled('body') && ! $request->hasFile('media')) {

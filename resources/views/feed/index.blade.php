@@ -40,7 +40,7 @@
                             <svg class="w-8 h-8 text-fb-blue mb-2" fill="currentColor" viewBox="0 0 24 24"><path d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z"/></svg>
                             <span class="text-xs font-semibold text-fb-blue">Create Story</span>
                         </div>
-                        <input type="file" name="media" accept="image/*,video/*" class="hidden" onchange="this.form.submit()">
+                        <input type="file" name="media" accept="image/*,video/*" class="hidden" onchange="compressAndSubmitForm(this)">
                     </label>
                 </form>
                 @foreach($stories as $userId => $userStories)
@@ -68,9 +68,6 @@
         {{-- Create Post --}}
         <div class="bg-white rounded-lg shadow p-4" id="create-post-card">
             <div id="post-form-alert" class="hidden mb-3 p-3 rounded-lg text-sm font-medium"></div>
-            @if(session('success'))
-                <div class="bg-green-50 text-green-700 border border-green-200 p-3 rounded-lg mb-3 text-sm font-medium">{{ session('success') }}</div>
-            @endif
             @if(session('error'))
                 <div class="bg-red-50 text-red-600 border border-red-200 p-3 rounded-lg mb-3 text-sm">{{ session('error') }}</div>
             @endif
@@ -157,9 +154,16 @@
                     submitBtn.textContent = 'Posting...';
 
                     try {
+                        const formData = new FormData(form);
+                        const mediaFile = mediaInput?.files?.[0];
+                        if (mediaFile) {
+                            const prepared = await window.prepareMediaFile(mediaFile);
+                            formData.set('media', prepared);
+                        }
+
                         const res = await fetch('/posts', {
                             method: 'POST',
-                            body: new FormData(form),
+                            body: formData,
                             credentials: 'same-origin',
                             headers: {
                                 'X-Requested-With': 'XMLHttpRequest',
@@ -185,16 +189,14 @@
                             || 'Could not create post. Please try again.';
                         showAlert(message, 'error');
                     } catch (err) {
-                        showAlert('Network error. Check your connection and try again.', 'error');
+                        const message = err.message || 'Network error. Check your connection and try again.';
+                        showAlert(message, 'error');
                     } finally {
                         submitBtn.disabled = false;
                         submitBtn.textContent = 'Post';
                     }
                 });
 
-                @if(session('success'))
-                    showAlert(@json(session('success')), 'success');
-                @endif
             })();
         </script>
 

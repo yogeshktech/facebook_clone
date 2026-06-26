@@ -112,7 +112,14 @@
         const formData = new FormData();
         formData.append('_token', csrfToken);
         if (body) formData.append('body', body);
-        if (mediaFile) formData.append('media', mediaFile);
+        if (mediaFile) {
+            try {
+                formData.append('media', await window.prepareMediaFile(mediaFile));
+            } catch (error) {
+                alert(error.message || 'Could not send this file.');
+                return;
+            }
+        }
 
         input.value = '';
         document.getElementById('chat-media').value = '';

@@ -12,7 +12,7 @@
                 <div class="w-32 h-48 rounded-xl bg-fb-gray border-2 border-dashed border-gray-300 flex flex-col items-center justify-center">
                     <span class="text-fb-blue font-semibold text-sm">+ Add Story</span>
                 </div>
-                <input type="file" name="media" accept="image/*,video/*" class="hidden" onchange="this.form.submit()">
+                <input type="file" name="media" accept="image/*,video/*" class="hidden" onchange="compressAndSubmitForm(this)">
             </label>
         </form>
         @foreach($stories as $userId => $userStories)

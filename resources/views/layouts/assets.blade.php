@@ -2,6 +2,7 @@
     @vite(['resources/css/app.css', 'resources/js/app.js'])
 @else
     <script src="https://cdn.tailwindcss.com"></script>
+    @include('layouts.image-compress')
     <script>
         tailwind.config = {
             theme: {
@@ -24,6 +25,9 @@
         .nav-icon:hover { background: #F0F2F5; }
         .nav-icon.active { color: #6366F1; border-bottom: 4px solid #6366F1; border-radius: 0; }
         .nav-icon.active:hover { background: transparent; }
+        .mobile-nav-icon { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; min-width: 3.5rem; padding: 0.25rem 0.5rem; border-radius: 0.5rem; color: #6b7280; font-size: 0.625rem; font-weight: 600; transition: color 0.15s; }
+        .mobile-nav-icon.active { color: #6366F1; }
+        .safe-area-bottom { padding-bottom: env(safe-area-inset-bottom, 0); }
         .sidebar-link { display: flex; align-items: center; gap: 0.75rem; padding: 0.5rem; border-radius: 0.5rem; font-size: 0.875rem; font-weight: 500; transition: background 0.15s; }
         .sidebar-link:hover { background: #e5e7eb; }
         .btn-primary { background: #6366F1; color: white; padding: 0.5rem 1rem; border-radius: 0.5rem; font-weight: 600; transition: background 0.15s; }
@@ -46,9 +50,22 @@
 
         document.addEventListener('DOMContentLoaded', () => {
             const countEl = document.getElementById('notification-count');
+            const mobileCountEl = document.getElementById('mobile-notification-count');
             const toastEl = document.getElementById('notification-toast');
-            if (!countEl) return;
+            if (!countEl && !mobileCountEl) return;
             let lastCount = 0;
+            const updateCount = (count) => {
+                const label = count > 9 ? '9+' : count;
+                [countEl, mobileCountEl].forEach(el => {
+                    if (!el) return;
+                    if (count > 0) {
+                        el.textContent = label;
+                        el.classList.remove('hidden');
+                    } else {
+                        el.classList.add('hidden');
+                    }
+                });
+            };
             const poll = async () => {
                 try {
                     const res = await fetch('/notifications/unread', {
@@ -56,12 +73,7 @@
                     });
                     if (!res.ok) return;
                     const data = await res.json();
-                    if (data.count > 0) {
-                        countEl.textContent = data.count > 9 ? '9+' : data.count;
-                        countEl.classList.remove('hidden');
-                    } else {
-                        countEl.classList.add('hidden');
-                    }
+                    updateCount(data.count || 0);
                     if (data.count > lastCount && data.notifications?.length && toastEl) {
                         const latest = data.notifications[0];
                         toastEl.innerHTML = '<p class="font-semibold text-sm">' + (latest.data?.message || 'New notification') + '</p><p class="text-xs text-gray-500">' + latest.created_at + '</p>';

@@ -1,4 +1,5 @@
 import './bootstrap';
+import './image-compress';
 
 window.togglePassword = function (inputId, btn) {
     const input = document.getElementById(inputId);
@@ -13,10 +14,24 @@ window.togglePassword = function (inputId, btn) {
 // Live notification polling
 document.addEventListener('DOMContentLoaded', () => {
     const countEl = document.getElementById('notification-count');
+    const mobileCountEl = document.getElementById('mobile-notification-count');
     const toastEl = document.getElementById('notification-toast');
-    if (!countEl) return;
+    if (!countEl && !mobileCountEl) return;
 
     let lastCount = 0;
+
+    const updateCount = (count) => {
+        const label = count > 9 ? '9+' : count;
+        [countEl, mobileCountEl].forEach(el => {
+            if (!el) return;
+            if (count > 0) {
+                el.textContent = label;
+                el.classList.remove('hidden');
+            } else {
+                el.classList.add('hidden');
+            }
+        });
+    };
 
     const pollNotifications = async () => {
         try {
@@ -26,12 +41,7 @@ document.addEventListener('DOMContentLoaded', () => {
             if (!res.ok) return;
             const data = await res.json();
 
-            if (data.count > 0) {
-                countEl.textContent = data.count > 9 ? '9+' : data.count;
-                countEl.classList.remove('hidden');
-            } else {
-                countEl.classList.add('hidden');
-            }
+            updateCount(data.count || 0);
 
             if (data.count > lastCount && data.notifications?.length && toastEl) {
                 const latest = data.notifications[0];

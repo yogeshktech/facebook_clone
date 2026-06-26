@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Controllers\Auth\ForgotPasswordController;
 use App\Http\Controllers\Auth\LoginController;
 use App\Http\Controllers\Auth\RegisterController;
 use App\Http\Controllers\Auth\SocialAuthController;
@@ -8,6 +9,7 @@ use App\Http\Controllers\FeedController;
 use App\Http\Controllers\FollowController;
 use App\Http\Controllers\FriendController;
 use App\Http\Controllers\GroupController;
+use App\Http\Controllers\MediaController;
 use App\Http\Controllers\NotificationController;
 use App\Http\Controllers\PageController;
 use App\Http\Controllers\PostController;
@@ -22,6 +24,10 @@ Route::get('/', function () {
         : redirect()->route('login');
 });
 
+Route::get('/media/{path}', [MediaController::class, 'show'])
+    ->where('path', '.*')
+    ->name('media.show');
+
 // Guest routes
 Route::middleware('guest')->group(function () {
     Route::get('/login', [LoginController::class, 'showLoginForm'])->name('login');
@@ -32,6 +38,12 @@ Route::middleware('guest')->group(function () {
     Route::get('/register/verify', [RegisterController::class, 'showVerifyForm'])->name('register.verify');
     Route::post('/register/verify', [RegisterController::class, 'verifyOtp'])->name('register.verify.submit');
     Route::post('/register/resend-otp', [RegisterController::class, 'resendOtp'])->name('register.resend-otp');
+
+    Route::get('/password/forgot', [ForgotPasswordController::class, 'showForgotForm'])->name('password.request');
+    Route::post('/password/forgot', [ForgotPasswordController::class, 'findAccount'])->name('password.email');
+    Route::get('/password/sent', [ForgotPasswordController::class, 'showSentForm'])->name('password.sent');
+    Route::get('/password/reset/{token}', [ForgotPasswordController::class, 'showResetForm'])->name('password.reset');
+    Route::post('/password/reset', [ForgotPasswordController::class, 'reset'])->name('password.update');
 
     Route::get('/auth/{provider}', [SocialAuthController::class, 'redirect'])->name('social.redirect');
     Route::get('/auth/{provider}/callback', [SocialAuthController::class, 'callback'])->name('social.callback');

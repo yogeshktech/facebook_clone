@@ -1,0 +1,5 @@
+# Add inside your server { } block for newbook.workarya.com
+client_max_body_size 10M;
+
+# PHP-FPM (if using fastcgi)
+# fastcgi_param PHP_VALUE "upload_max_filesize=10M \n post_max_size=12M";

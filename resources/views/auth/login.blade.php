@@ -13,6 +13,10 @@
         <div class="bg-white rounded-lg shadow-lg p-6">
             <h2 class="text-xl font-semibold mb-4">Log In</h2>
 
+            @if(session('success'))
+                <div class="bg-green-50 text-green-700 p-3 rounded-lg mb-4 text-sm">{{ session('success') }}</div>
+            @endif
+
             @if($errors->any())
                 <div class="bg-red-50 text-red-600 p-3 rounded-lg mb-4 text-sm">
                     @foreach($errors->all() as $error)
@@ -26,6 +30,9 @@
                 <input type="text" name="login" value="{{ old('login') }}" placeholder="Email or Mobile Number"
                     class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-fb-blue" required>
                 <x-password-input name="password" placeholder="Password" />
+                <div class="text-right">
+                    <a href="{{ route('password.request') }}" class="text-sm text-fb-blue hover:underline">Forgot password?</a>
+                </div>
                 <label class="flex items-center gap-2 text-sm text-gray-600">
                     <input type="checkbox" name="remember"> Remember me
                 </label>
