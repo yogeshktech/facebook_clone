@@ -129,9 +129,17 @@ class ChatController extends Controller
         $mediaType = null;
 
         if ($request->hasFile('media')) {
-            $file = $request->file('media');
-            $mediaType = MediaStorage::mediaType($file);
-            $mediaPath = MediaStorage::store($file, 'chat');
+            try {
+                $file = $request->file('media');
+                $mediaType = MediaStorage::mediaType($file);
+                $mediaPath = MediaStorage::store($file, 'chat');
+            } catch (\Throwable $e) {
+                if ($request->expectsJson()) {
+                    return response()->json(['error' => 'Failed to upload media. '.$e->getMessage()], 422);
+                }
+
+                return back()->with('error', 'Failed to upload media.');
+            }
         }
 
         $message = Message::create([
@@ -146,7 +154,17 @@ class ChatController extends Controller
         broadcast(new MessageSent($message))->toOthers();
 
         if ($request->expectsJson()) {
-            return response()->json(['message' => $message->load('user')]);
+            $message->refresh();
+
+            return response()->json([
+                'message' => [
+                    'id' => $message->id,
+                    'body' => $message->body,
+                    'media_url' => $message->media_url,
+                    'media_type' => $message->media_type,
+                    'user_id' => $message->user_id,
+                ],
+            ]);
         }
 
         return back();
