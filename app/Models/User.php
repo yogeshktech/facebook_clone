@@ -52,11 +52,8 @@ class User extends Authenticatable
     public function getAvatarUrlAttribute(): string
     {
         if ($this->avatar) {
-            if (str_starts_with($this->avatar, 'http')) {
-                return $this->avatar;
-            }
-
-            return MediaStorage::url($this->avatar);
+            return MediaStorage::url($this->avatar)
+                ?? 'https://ui-avatars.com/api/?name='.urlencode($this->name).'&background=1877F2&color=fff';
         }
 
         return 'https://ui-avatars.com/api/?name='.urlencode($this->name).'&background=1877F2&color=fff';

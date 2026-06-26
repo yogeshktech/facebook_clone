@@ -19,7 +19,11 @@ class MediaStorage
             return null;
         }
 
-        $relativePath = self::extractRelativePath($path);
+        if ((str_starts_with($path, 'http://') || str_starts_with($path, 'https://')) && ! self::isOurMediaUrl($path)) {
+            return $path;
+        }
+
+        $relativePath = self::normalizeStoredPath($path);
         $publicBase = self::publicBaseUrl();
 
         if ($publicBase) {
@@ -32,6 +36,39 @@ class MediaStorage
         }
 
         return Storage::disk('public')->url($relativePath);
+    }
+
+    public static function normalizeStoredPath(string $path): string
+    {
+        return self::extractRelativePath($path);
+    }
+
+    public static function isOurMediaUrl(string $path): bool
+    {
+        if (! str_starts_with($path, 'http://') && ! str_starts_with($path, 'https://')) {
+            return true;
+        }
+
+        $awsUrl = rtrim((string) config('filesystems.disks.s3.url'), '/');
+        if ($awsUrl !== '' && str_starts_with($path, $awsUrl)) {
+            return true;
+        }
+
+        $endpoint = rtrim((string) config('filesystems.disks.s3.endpoint'), '/');
+        if ($endpoint !== '' && str_starts_with($path, $endpoint)) {
+            return true;
+        }
+
+        if (str_contains($path, '/fb-media/') || str_contains($path, '116.203.133.249:9000')) {
+            return true;
+        }
+
+        $appUrl = rtrim((string) config('app.url'), '/');
+        if ($appUrl !== '' && str_starts_with($path, $appUrl.'/media/')) {
+            return true;
+        }
+
+        return str_contains($path, '/storage/');
     }
 
     public static function store(UploadedFile $file, string $folder): string
@@ -120,6 +157,10 @@ class MediaStorage
 
         $bucket = (string) config('filesystems.disks.s3.bucket');
         if ($bucket !== '' && preg_match('#/'.preg_quote($bucket, '#').'/(.+)$#', $path, $matches)) {
+            return $matches[1];
+        }
+
+        if (preg_match('#/fb-media/(.+)$#', $path, $matches)) {
             return $matches[1];
         }
 
