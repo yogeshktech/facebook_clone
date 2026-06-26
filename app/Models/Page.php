@@ -1,0 +1,64 @@
+<?php
+
+namespace App\Models;
+
+use App\Support\MediaStorage;
+use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\BelongsToMany;
+use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Support\Str;
+
+class Page extends Model
+{
+    protected $fillable = [
+        'owner_id', 'name', 'slug', 'description',
+        'category', 'avatar', 'cover_photo',
+    ];
+
+    protected $appends = ['avatar_url', 'cover_photo_url', 'followers_count'];
+
+    protected static function booted(): void
+    {
+        static::creating(function (Page $page) {
+            if (empty($page->slug)) {
+                $page->slug = Str::slug($page->name).'-'.Str::random(5);
+            }
+        });
+    }
+
+    public function getAvatarUrlAttribute(): string
+    {
+        if ($this->avatar) {
+            return MediaStorage::url($this->avatar);
+        }
+
+        return 'https://ui-avatars.com/api/?name='.urlencode($this->name).'&background=e41e3f&color=fff';
+    }
+
+    public function getCoverPhotoUrlAttribute(): ?string
+    {
+        return $this->cover_photo ? MediaStorage::url($this->cover_photo) : null;
+    }
+
+    public function getFollowersCountAttribute(): int
+    {
+        return $this->followers()->count();
+    }
+
+    public function owner(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'owner_id');
+    }
+
+    public function followers(): BelongsToMany
+    {
+        return $this->belongsToMany(User::class, 'page_followers')
+            ->withTimestamps();
+    }
+
+    public function posts(): HasMany
+    {
+        return $this->hasMany(Post::class);
+    }
+}
