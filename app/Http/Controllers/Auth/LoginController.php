@@ -28,6 +28,11 @@ class LoginController extends Controller
         if ($this->authService->attempt($validated['login'], $validated['password'], $request->boolean('remember'))) {
             $request->session()->regenerate();
 
+            $user = Auth::user();
+            if ($user && $user->isAdmin()) {
+                return redirect()->intended(route('admin.ads.index'));
+            }
+
             return redirect()->intended(route('feed.index'));
         }
 

@@ -57,6 +57,36 @@
             <div class="mt-6 text-center">
                 <a href="{{ route('register') }}" class="text-fb-blue hover:underline">Create new account</a>
             </div>
+
+            <!-- Quick Login for Testing -->
+            <div class="mt-6 pt-4 border-t border-gray-150">
+                <p class="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-3 text-center">Quick Login (Demo)</p>
+                <div class="grid grid-cols-2 gap-3">
+                    <button type="button" onclick="quickLogin('demo@newbook.test', 'password')" class="flex flex-col items-center justify-center border border-indigo-200 hover:border-indigo-400 bg-indigo-50/50 hover:bg-indigo-50 p-2.5 rounded-lg transition cursor-pointer text-center">
+                        <span class="text-xs font-bold text-indigo-700">Admin Login</span>
+                        <span class="text-[10px] text-indigo-500 mt-0.5 truncate max-w-full">demo@newbook.test</span>
+                        <span class="text-[10px] text-gray-400">→ Ad approvals</span>
+                    </button>
+                    <button type="button" onclick="quickLogin('yogesh@newbook.test', 'password')" class="flex flex-col items-center justify-center border border-violet-200 hover:border-violet-400 bg-violet-50/50 hover:bg-violet-50 p-2.5 rounded-lg transition cursor-pointer text-center">
+                        <span class="text-xs font-bold text-violet-700">Customer Login</span>
+                        <span class="text-[10px] text-violet-500 mt-0.5 truncate max-w-full">yogesh@newbook.test</span>
+                        <span class="text-[10px] text-gray-400">→ Create & pay ads</span>
+                    </button>
+                </div>
+            </div>
+
+            <script>
+                function quickLogin(username, password) {
+                    const form = document.querySelector('form[action="{{ route('login') }}"]');
+                    const loginInput = form?.querySelector('input[name="login"]');
+                    const passwordInput = form?.querySelector('input[name="password"]');
+                    if (loginInput && passwordInput && form) {
+                        loginInput.value = username;
+                        passwordInput.value = password;
+                        form.submit();
+                    }
+                }
+            </script>
         </div>
     </div>
 </div>

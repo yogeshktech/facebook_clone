@@ -115,4 +115,21 @@ Route::middleware('auth')->group(function () {
     Route::post('/notifications/{id}/read', [NotificationController::class, 'markAsRead'])->name('notifications.read');
     Route::post('/notifications/read-all', [NotificationController::class, 'markAllAsRead'])->name('notifications.readAll');
     Route::get('/notifications/unread', [NotificationController::class, 'unread'])->name('notifications.unread');
+
+    // Advertisements & Leads
+    Route::get('/ads', [App\Http\Controllers\AdvertisementController::class, 'index'])->name('ads.index');
+    Route::get('/ads/create', [App\Http\Controllers\AdvertisementController::class, 'create'])->name('ads.create');
+    Route::post('/ads', [App\Http\Controllers\AdvertisementController::class, 'store'])->name('ads.store');
+    Route::get('/ads/{ad}/payment', [App\Http\Controllers\AdvertisementController::class, 'paymentScreen'])->name('ads.payment');
+    Route::post('/ads/{ad}/payment', [App\Http\Controllers\AdvertisementController::class, 'processPayment'])->name('ads.pay');
+    Route::post('/ads/{ad}/lead', [App\Http\Controllers\AdvertisementController::class, 'submitLead'])->name('ads.lead.submit');
+    Route::get('/ads/{ad}/leads', [App\Http\Controllers\AdvertisementController::class, 'showLeads'])->name('ads.leads');
+    Route::get('/ads/{ad}/leads/download', [App\Http\Controllers\AdvertisementController::class, 'downloadLeads'])->name('ads.leads.download');
+
+    // Admin Ads Panel
+    Route::middleware('admin')->prefix('admin')->name('admin.')->group(function () {
+        Route::get('/ads', [App\Http\Controllers\AdvertisementController::class, 'adminIndex'])->name('ads.index');
+        Route::post('/ads/{ad}/approve', [App\Http\Controllers\AdvertisementController::class, 'approveAd'])->name('ads.approve');
+        Route::post('/ads/{ad}/reject', [App\Http\Controllers\AdvertisementController::class, 'rejectAd'])->name('ads.reject');
+    });
 });

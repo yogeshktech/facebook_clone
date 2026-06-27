@@ -26,6 +26,10 @@
             <svg class="w-9 h-9 text-fb-blue" fill="currentColor" viewBox="0 0 24 24"><path d="M20 2H4c-1.1 0-2 .9-2 2v18l4-4h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2z"/></svg>
             <span>Messenger</span>
         </a>
+        <a href="{{ route('ads.index') }}" class="sidebar-link">
+            <svg class="w-9 h-9 text-fb-blue" fill="currentColor" viewBox="0 0 24 24"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 14h-2v-2h2v2zm0-4h-2V7h2v5z"/></svg>
+            <span>Ads Manager</span>
+        </a>
     </aside>
 
     {{-- Main Feed --}}
@@ -201,8 +205,46 @@
         </script>
 
         {{-- Posts Feed --}}
+        @php $postIndex = 0; @endphp
         @forelse($posts as $post)
             @include('components.post-card', ['post' => $post])
+
+            {{-- Inject an ad after the 2nd post --}}
+            @if($postIndex == 1 && !$activeAds->isEmpty() && $ad = $activeAds->first())
+                <div class="bg-white rounded-lg shadow p-4 border border-indigo-100/50 relative space-y-3">
+                    <div class="flex items-center gap-2">
+                        <div class="w-9 h-9 rounded-full bg-indigo-600 text-white flex items-center justify-center font-bold text-sm">
+                            Ad
+                        </div>
+                        <div>
+                            <div class="flex items-center gap-1.5">
+                                <span class="font-bold text-sm text-gray-900">Sponsored Campaign</span>
+                                <span class="bg-indigo-100 text-indigo-700 text-[10px] font-extrabold px-1.5 py-0.5 rounded-full">AD</span>
+                            </div>
+                            <span class="text-xs text-gray-500 flex items-center gap-1">
+                                Sponsored · 
+                                <svg class="w-3.5 h-3.5" fill="currentColor" viewBox="0 0 24 24"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1 17.93c-3.95-.49-7-3.85-7-7.93 0-.62.08-1.21.21-1.79L9 15v1c0 1.1.9 2 2 2v1.93zm6.9-2.54c-.26-.81-1-1.39-1.9-1.39h-1v-3c0-.55-.45-1-1-1H8v-2h2c.55 0 1-.45 1-1V7h2c1.1 0 2-.9 2-2v-.41c2.93 1.19 5 4.06 5 7.41 0 2.08-.8 3.97-2.1 5.39z"/></svg>
+                            </span>
+                        </div>
+                    </div>
+                    <p class="text-gray-800 text-sm font-medium">{{ $ad->description }}</p>
+                    @if($ad->image_url)
+                        <div class="rounded-lg overflow-hidden bg-fb-gray max-h-96 border">
+                            <img src="{{ $ad->image_url }}" alt="" class="w-full object-cover">
+                        </div>
+                    @endif
+                    <div class="bg-gray-50 p-4 border rounded-lg flex items-center justify-between gap-4">
+                        <div class="min-w-0">
+                            <h4 class="font-bold text-gray-900 text-sm truncate">{{ $ad->title }}</h4>
+                            <p class="text-xs text-gray-500 truncate mt-0.5">{{ url('/') }}</p>
+                        </div>
+                        <button onclick="openLeadModal({{ $ad->id }}, '{{ addslashes($ad->title) }}', '{{ addslashes($ad->cta_text) }}')" class="btn-primary text-xs py-2 px-4 whitespace-nowrap cursor-pointer">
+                            {{ $ad->cta_text }}
+                        </button>
+                    </div>
+                </div>
+            @endif
+            @php $postIndex++; @endphp
         @empty
             <div class="bg-white rounded-lg shadow p-8 text-center text-gray-500">
                 <p>No posts yet. Add friends or create your first post!</p>
@@ -229,6 +271,146 @@
                 </div>
             @endforeach
         </div>
+
+        @if(!$activeAds->isEmpty())
+            <div class="bg-white rounded-lg shadow p-4 space-y-4">
+                <h3 class="font-semibold text-gray-600">Sponsored</h3>
+                @foreach($activeAds->take(2) as $ad)
+                    <div class="space-y-2">
+                        @if($ad->image_url)
+                            <img src="{{ $ad->image_url }}" alt="" class="w-full h-32 object-cover rounded-lg bg-gray-100">
+                        @endif
+                        <div>
+                            <h4 class="font-bold text-sm text-gray-900 truncate">{{ $ad->title }}</h4>
+                            <p class="text-xs text-gray-500 line-clamp-2 mt-1">{{ $ad->description }}</p>
+                        </div>
+                        <button onclick="openLeadModal({{ $ad->id }}, '{{ addslashes($ad->title) }}', '{{ addslashes($ad->cta_text) }}')" class="w-full bg-indigo-50 hover:bg-indigo-100 text-indigo-700 font-bold text-xs py-2 px-3 rounded-lg text-center block transition cursor-pointer">
+                            {{ $ad->cta_text }}
+                        </button>
+                    </div>
+                    @if(!$loop->last)
+                        <hr class="border-gray-100">
+                    @endif
+                @endforeach
+            </div>
+        @endif
     </aside>
 </div>
+
+{{-- Lead Capture Modal --}}
+<div id="leadModal" class="fixed inset-0 z-50 overflow-y-auto hidden">
+    <!-- Backdrop -->
+    <div class="fixed inset-0 bg-black/60 backdrop-blur-sm transition-opacity"></div>
+    
+    <!-- Modal Dialog -->
+    <div class="flex min-h-full items-end justify-center p-4 text-center sm:items-center sm:p-0">
+        <div class="relative transform overflow-hidden rounded-2xl bg-white text-left shadow-2xl transition-all sm:my-8 sm:w-full sm:max-w-lg border border-gray-100">
+            <!-- Modal Header -->
+            <div class="bg-indigo-600 px-6 py-4 text-white">
+                <h3 class="text-lg font-bold" id="leadModalTitle">Request Details</h3>
+                <p class="text-indigo-100 text-xs mt-1">Pre-filled with your profile info. Edit if needed.</p>
+            </div>
+            
+            <form id="leadModalForm" class="p-6 space-y-4">
+                @csrf
+                <input type="hidden" name="ad_id" id="leadModalAdId">
+                
+                <div id="leadModalAlert" class="hidden p-3 rounded-lg text-sm font-semibold"></div>
+
+                <div>
+                    <label for="lead_name" class="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-1">Full Name *</label>
+                    <input type="text" name="name" id="lead_name" required value="{{ auth()->user()->name }}" class="input-field">
+                </div>
+
+                <div>
+                    <label for="lead_email" class="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-1">Email Address *</label>
+                    <input type="email" name="email" id="lead_email" required value="{{ auth()->user()->email }}" class="input-field">
+                </div>
+
+                <div>
+                    <label for="lead_phone" class="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-1">Phone Number *</label>
+                    <input type="text" name="phone" id="lead_phone" required value="{{ auth()->user()->phone }}" class="input-field">
+                </div>
+
+                <div>
+                    <label for="lead_notes" class="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-1">Message / Requirements (Optional)</label>
+                    <textarea name="notes" id="lead_notes" rows="3" placeholder="Tell us what you are looking for..." class="input-field"></textarea>
+                </div>
+
+                <div class="flex justify-end gap-3 pt-3 border-t">
+                    <button type="button" onclick="closeLeadModal()" class="btn-secondary text-sm cursor-pointer">Cancel</button>
+                    <button type="submit" id="leadModalSubmitBtn" class="bg-indigo-600 text-white px-5 py-2 rounded-lg font-semibold hover:bg-indigo-700 transition text-sm cursor-pointer">
+                        Submit
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<script>
+    function openLeadModal(adId, adTitle, ctaText) {
+        document.getElementById('leadModalAdId').value = adId;
+        document.getElementById('leadModalTitle').textContent = adTitle;
+        document.getElementById('leadModalSubmitBtn').textContent = ctaText || 'Submit';
+        
+        // Reset form messages
+        const alertBox = document.getElementById('leadModalAlert');
+        alertBox.classList.add('hidden');
+        alertBox.textContent = '';
+        
+        document.getElementById('leadModal').classList.remove('hidden');
+    }
+
+    function closeLeadModal() {
+        document.getElementById('leadModal').classList.add('hidden');
+    }
+
+    document.getElementById('leadModalForm')?.addEventListener('submit', async function(e) {
+        e.preventDefault();
+        
+        const adId = document.getElementById('leadModalAdId').value;
+        const submitBtn = document.getElementById('leadModalSubmitBtn');
+        const alertBox = document.getElementById('leadModalAlert');
+        
+        submitBtn.disabled = true;
+        submitBtn.textContent = 'Submitting...';
+        
+        try {
+            const formData = new FormData(this);
+            const res = await fetch(`/ads/${adId}/lead`, {
+                method: 'POST',
+                body: formData,
+                headers: {
+                    'X-Requested-With': 'XMLHttpRequest',
+                    'Accept': 'application/json',
+                    'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]')?.content || '',
+                }
+            });
+            
+            const data = await res.json();
+            if (res.ok && data.success) {
+                alertBox.className = "p-3 rounded-lg text-sm font-semibold bg-green-50 text-green-700 border border-green-200 mb-4";
+                alertBox.textContent = data.message;
+                alertBox.classList.remove('hidden');
+                
+                setTimeout(() => {
+                    closeLeadModal();
+                    this.reset();
+                }, 2000);
+            } else {
+                const errorMsg = data.message || 'Something went wrong. Please try again.';
+                alertBox.className = "p-3 rounded-lg text-sm font-semibold bg-red-50 text-red-600 border border-red-200 mb-4";
+                alertBox.textContent = errorMsg;
+                alertBox.classList.remove('hidden');
+            }
+        } catch(err) {
+            alertBox.className = "p-3 rounded-lg text-sm font-semibold bg-red-50 text-red-600 border border-red-200 mb-4";
+            alertBox.textContent = 'Connection error. Please try again.';
+            alertBox.classList.remove('hidden');
+        } finally {
+            submitBtn.disabled = false;
+        }
+    });
+</script>
 @endsection

@@ -90,6 +90,7 @@ class RegisterController extends Controller
             'email' => $data['email'],
             'phone' => $data['phone'],
             'password' => $data['password'],
+            'role' => 'user',
             'email_verified_at' => now(),
         ]);
 

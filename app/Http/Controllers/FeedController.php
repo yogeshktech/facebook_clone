@@ -39,7 +39,16 @@ class FeedController extends Controller
             ->limit(5)
             ->get();
 
-        return view('feed.index', compact('posts', 'stories', 'suggestions'));
+        $activeAds = \App\Models\Advertisement::where('status', 'approved')
+            ->where('payment_status', 'paid')
+            ->where(function($query) {
+                $query->whereNull('expires_at')
+                      ->orWhere('expires_at', '>', now());
+            })
+            ->inRandomOrder()
+            ->get();
+
+        return view('feed.index', compact('posts', 'stories', 'suggestions', 'activeAds'));
     }
 
     private function getFriendIds(User $user): array

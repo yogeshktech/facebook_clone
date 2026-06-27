@@ -35,6 +35,7 @@ class DummyDataSeeder extends Seeder
                 'email' => $data['email'],
                 'phone' => $data['phone'],
                 'password' => Hash::make('password'),
+                'role' => $data['email'] === 'demo@newbook.test' ? 'admin' : 'user',
                 'bio' => $data['bio'],
                 'location' => fake()->city(),
                 'email_verified_at' => now(),
@@ -146,7 +147,75 @@ class DummyDataSeeder extends Seeder
             'type' => 'text',
         ]);
 
-        $this->command?->info('Dummy data seeded!');
-        $this->command?->info('Login: demo@newbook.test OR 9876543210 | Password: password');
+        // Advertisements Seeding
+        $ad1 = \App\Models\Advertisement::create([
+            'user_id' => $demo->id,
+            'title' => 'Web Design Bootcamp',
+            'description' => 'Learn HTML, CSS, JavaScript, Tailwind, and Laravel. Sign up today to get 50% off on our full bootcamp course!',
+            'image_path' => null,
+            'cta_text' => 'Sign Up',
+            'plan' => 'monthly',
+            'amount' => 999.00,
+            'payment_status' => 'paid',
+            'status' => 'approved',
+            'expires_at' => now()->addDays(20),
+        ]);
+
+        $ad2 = \App\Models\Advertisement::create([
+            'user_id' => $users[1]->id, // Yogesh Kumar
+            'title' => 'Hire Dedicated Laravel Experts',
+            'description' => 'Looking for top-notch Laravel developers? Hire our dedicated team to build high-performance web applications.',
+            'image_path' => null,
+            'cta_text' => 'Contact Us',
+            'plan' => 'quarterly',
+            'amount' => 2499.00,
+            'payment_status' => 'paid',
+            'status' => 'pending_approval',
+        ]);
+
+        $ad3 = \App\Models\Advertisement::create([
+            'user_id' => $users[2]->id, // Priya Sharma
+            'title' => 'Nature Photography Workshops',
+            'description' => 'Join our quarterly nature photography sessions. Limited seats available! Sign up to reserve your spot.',
+            'image_path' => null,
+            'cta_text' => 'Learn More',
+            'plan' => 'yearly',
+            'amount' => 7999.00,
+            'payment_status' => 'pending',
+            'status' => 'pending_payment',
+        ]);
+
+        // Leads Seeding
+        \App\Models\Lead::create([
+            'advertisement_id' => $ad1->id,
+            'user_id' => $users[2]->id, // Priya
+            'name' => $users[2]->name,
+            'email' => $users[2]->email,
+            'phone' => $users[2]->phone,
+            'notes' => 'I want to join the JavaScript module and learn React.',
+        ]);
+
+        \App\Models\Lead::create([
+            'advertisement_id' => $ad1->id,
+            'user_id' => $users[3]->id, // Rahul
+            'name' => $users[3]->name,
+            'email' => $users[3]->email,
+            'phone' => $users[3]->phone,
+            'notes' => 'Please send me the syllabus details and fee structure.',
+        ]);
+
+        \App\Models\Lead::create([
+            'advertisement_id' => $ad1->id,
+            'user_id' => $users[7]->id, // Amit
+            'name' => $users[7]->name,
+            'email' => $users[7]->email,
+            'phone' => $users[7]->phone,
+            'notes' => 'Do you offer weekend batches for working professionals?',
+        ]);
+
+        $this->command?->info('Dummy data, advertisements, and leads seeded!');
+        $this->command?->info('Admin Ad Panel URL: /admin/ads');
+        $this->command?->info('Login: demo@newbook.test (admin) | yogesh@newbook.test (customer) | Password: password');
+        $this->command?->info('Admin panel: /admin/ads | Customer ads: /ads');
     }
 }
