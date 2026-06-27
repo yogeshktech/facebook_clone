@@ -14,7 +14,8 @@
 
         <div class="flex-1 overflow-y-auto p-4 space-y-3 flex flex-col" id="chat-messages"></div>
 
-        <form action="{{ route('chat.send', $conversation) }}" method="POST" enctype="multipart/form-data" class="p-2 sm:p-3 border-t flex gap-1.5 sm:gap-2 items-center flex-shrink-0" id="chat-form">
+        <form action="{{ route('chat.send', $conversation) }}" method="POST" enctype="multipart/form-data" 
+                class="p-2 sm:p-3 border-t flex gap-1.5 sm:gap-2 items-center flex-shrink-0" id="chat-form">
             @csrf
             <label class="cursor-pointer text-fb-blue hover:bg-fb-gray p-2 rounded-full flex-shrink-0" title="Send image/video">
                 <svg class="w-5 h-5 sm:w-6 sm:h-6" fill="currentColor" viewBox="0 0 24 24"><path d="M21 19V5c0-1.1-.9-2-2-2H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2zM8.5 13.5l2.5 3.01L14.5 12l4.5 6H5l3.5-4.5z"/></svg>
