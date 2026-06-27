@@ -175,4 +175,14 @@ class User extends Authenticatable
     {
         return $this->hasMany(Advertisement::class);
     }
+
+    public function receivedNotifications(): HasMany
+    {
+        return $this->hasMany(SocialNotification::class, 'receiver_id');
+    }
+
+    public function deviceTokens(): HasMany
+    {
+        return $this->hasMany(DeviceToken::class);
+    }
 }

@@ -18,6 +18,7 @@ return Application::configure(basePath: dirname(__DIR__))
         $middleware->redirectUsersTo('/feed');
         $middleware->alias([
             'admin' => \App\Http\Middleware\EnsureAdmin::class,
+            'client' => \App\Http\Middleware\EnsureClient::class,
         ]);
     })
     ->withExceptions(function (Exceptions $exceptions): void {

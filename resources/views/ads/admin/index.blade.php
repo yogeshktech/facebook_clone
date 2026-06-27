@@ -71,7 +71,7 @@
                                             <button type="submit" class="bg-red-600 text-white text-xs font-bold py-1.5 px-3 rounded">Stop Ad</button>
                                         </form>
                                     @endif
-                                    <a href="{{ route('ads.leads', $ad) }}" class="bg-gray-100 text-gray-800 text-xs font-bold py-1.5 px-3 rounded">Leads</a>
+                                    <a href="{{ route('admin.ads.leads', $ad) }}" class="bg-gray-100 text-gray-800 text-xs font-bold py-1.5 px-3 rounded">Leads</a>
                                 </div>
                             </td>
                         </tr>

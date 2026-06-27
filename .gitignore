@@ -27,3 +27,4 @@ Thumbs.db
 /public/build
 /storage/*.key
 .env
+storage/app/firebase-credentials.json

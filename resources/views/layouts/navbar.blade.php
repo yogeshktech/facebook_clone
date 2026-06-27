@@ -34,12 +34,7 @@
 
         {{-- Right side --}}
         <div class="flex items-center gap-1 sm:gap-2 flex-shrink-0">
-            <div class="relative hidden md:block" id="notification-bell">
-                <a href="{{ route('notifications.index') }}" class="nav-icon relative" title="Notifications">
-                    <svg class="w-6 h-6" fill="currentColor" viewBox="0 0 24 24"><path d="M12 22c1.1 0 2-.9 2-2h-4c0 1.1.89 2 2 2zm6-6v-5c0-3.07-1.64-5.64-4.5-6.32V4c0-.83-.67-1.5-1.5-1.5s-1.5.67-1.5 1.5v.68C7.63 5.36 6 7.92 6 11v5l-2 2v1h16v-1l-2-2z"/></svg>
-                    <span id="notification-count" class="hidden absolute -top-1 -right-1 bg-red-500 text-white text-xs rounded-full w-5 h-5 flex items-center justify-center"></span>
-                </a>
-            </div>
+            @include('layouts.notification-bell')
             <a href="{{ route('profile.show', auth()->user()) }}" class="flex items-center gap-2 hover:bg-fb-gray rounded-full p-1 pr-2 sm:pr-3">
                 <img src="{{ auth()->user()->avatar_url }}" alt="" class="w-8 h-8 rounded-full object-cover">
                 <span class="hidden md:block text-sm font-medium max-w-[120px] truncate">{{ auth()->user()->name }}</span>

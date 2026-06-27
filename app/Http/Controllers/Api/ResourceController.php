@@ -89,7 +89,12 @@ class ResourceController extends Controller
 
     public function notifications(Request $request): JsonResponse
     {
-        return response()->json($request->user()->notifications()->paginate(20));
+        $notifications = \App\Models\SocialNotification::where('receiver_id', $request->user()->id)
+            ->with('sender')
+            ->latest()
+            ->paginate(20);
+
+        return response()->json($notifications->through(fn ($n) => $n->toPayload()));
     }
 
     public function profile(User $user): JsonResponse

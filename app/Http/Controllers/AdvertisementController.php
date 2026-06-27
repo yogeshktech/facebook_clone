@@ -141,21 +141,48 @@ class AdvertisementController extends Controller
 
     public function showLeads(Advertisement $ad)
     {
-        if ($ad->user_id !== auth()->id() && ! auth()->user()->isAdmin()) {
+        if ($ad->user_id !== auth()->id()) {
             abort(403);
         }
 
         $leads = $ad->leads()->latest()->get();
 
-        return view('ads.leads', compact('ad', 'leads'));
+        return view('ads.leads', [
+            'ad' => $ad,
+            'leads' => $leads,
+            'backRoute' => 'ads.index',
+            'downloadRoute' => 'ads.leads.download',
+        ]);
     }
 
     public function downloadLeads(Advertisement $ad)
     {
-        if ($ad->user_id !== auth()->id() && ! auth()->user()->isAdmin()) {
+        if ($ad->user_id !== auth()->id()) {
             abort(403);
         }
 
+        return $this->streamLeadsCsv($ad);
+    }
+
+    public function adminShowLeads(Advertisement $ad)
+    {
+        $leads = $ad->leads()->latest()->get();
+
+        return view('ads.leads', [
+            'ad' => $ad,
+            'leads' => $leads,
+            'backRoute' => 'admin.ads.index',
+            'downloadRoute' => 'admin.ads.leads.download',
+        ]);
+    }
+
+    public function adminDownloadLeads(Advertisement $ad)
+    {
+        return $this->streamLeadsCsv($ad);
+    }
+
+    private function streamLeadsCsv(Advertisement $ad)
+    {
         $leads = $ad->leads()->latest()->get();
         $filename = 'leads_ad_'.$ad->id.'_'.date('Y-m-d').'.csv';
 

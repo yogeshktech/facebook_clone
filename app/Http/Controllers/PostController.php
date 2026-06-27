@@ -9,7 +9,6 @@ use App\Models\Like;
 use App\Models\Message;
 use App\Models\Post;
 use App\Models\User;
-use App\Notifications\PostInteractionNotification;
 use App\Services\NotificationService;
 use App\Support\MediaStorage;
 use Illuminate\Http\JsonResponse;
@@ -114,10 +113,7 @@ class PostController extends Controller
         ]);
 
         if ($post->user_id !== auth()->id()) {
-            NotificationService::send(
-                $post->user,
-                new PostInteractionNotification(auth()->user(), $post, 'like')
-            );
+            NotificationService::postInteraction($post->user, auth()->user(), $post, 'like');
         }
 
         return back();
@@ -148,10 +144,7 @@ class PostController extends Controller
         ]);
 
         if ($post->user_id !== auth()->id()) {
-            NotificationService::send(
-                $post->user,
-                new PostInteractionNotification(auth()->user(), $post, 'comment')
-            );
+            NotificationService::postInteraction($post->user, auth()->user(), $post, 'comment');
         }
 
         return back();
@@ -169,10 +162,7 @@ class PostController extends Controller
         $post->increment('shares_count');
 
         if ($post->user_id !== auth()->id()) {
-            NotificationService::send(
-                $post->user,
-                new PostInteractionNotification(auth()->user(), $post, 'share')
-            );
+            NotificationService::postInteraction($post->user, auth()->user(), $post, 'share');
         }
 
         return back()->with('success', 'Post shared to your timeline!');

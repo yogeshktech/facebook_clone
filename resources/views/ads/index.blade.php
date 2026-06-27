@@ -10,11 +10,6 @@
             <p class="text-gray-500 text-sm">Create ads, set budget, pay — ad runs automatically after successful payment.</p>
         </div>
         <div class="flex gap-2">
-            @if(auth()->user()->isAdmin())
-                <a href="{{ route('admin.ads.index') }}" class="bg-gray-800 text-white px-4 py-2 rounded-lg font-semibold hover:bg-gray-700 transition text-sm">
-                    Admin Panel
-                </a>
-            @endif
             <a href="{{ route('ads.create') }}" class="btn-primary flex items-center gap-2 text-sm">
                 <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/></svg>
                 Create New Ad

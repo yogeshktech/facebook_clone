@@ -5,7 +5,6 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use App\Models\Friendship;
 use App\Models\User;
-use App\Notifications\FriendRequestNotification;
 use App\Services\NotificationService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -37,7 +36,7 @@ class FriendController extends Controller
             ['status' => 'pending']
         );
 
-        NotificationService::send($user, new FriendRequestNotification($friendship));
+        NotificationService::friendRequest($user, $friendship);
 
         return response()->json($friendship);
     }

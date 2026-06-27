@@ -29,6 +29,13 @@ Route::get('/media/{path}', [MediaController::class, 'show'])
     ->where('path', '.*')
     ->name('media.show');
 
+Route::get('/firebase-config.js', function () {
+    return response()
+        ->view('firebase.config-js')
+        ->header('Content-Type', 'application/javascript')
+        ->header('Cache-Control', 'no-cache, no-store, must-revalidate');
+})->name('firebase.config');
+
 // Guest routes
 Route::middleware('guest')->group(function () {
     Route::get('/login', [LoginController::class, 'showLoginForm'])->name('login');
@@ -115,23 +122,30 @@ Route::middleware('auth')->group(function () {
     // Search & Notifications
     Route::get('/search', [SearchController::class, 'index'])->name('search');
     Route::get('/notifications', [NotificationController::class, 'index'])->name('notifications.index');
+    Route::get('/notifications/count', [NotificationController::class, 'count'])->name('notifications.count');
+    Route::get('/notifications/unread', [NotificationController::class, 'unread'])->name('notifications.unread');
+    Route::post('/notifications/device-token', [NotificationController::class, 'storeDeviceToken'])->name('notifications.device-token');
     Route::post('/notifications/{id}/read', [NotificationController::class, 'markAsRead'])->name('notifications.read');
     Route::post('/notifications/read-all', [NotificationController::class, 'markAllAsRead'])->name('notifications.readAll');
-    Route::get('/notifications/unread', [NotificationController::class, 'unread'])->name('notifications.unread');
 
-    // Advertisements & Leads
-    Route::get('/ads', [App\Http\Controllers\AdvertisementController::class, 'index'])->name('ads.index');
-    Route::get('/ads/create', [App\Http\Controllers\AdvertisementController::class, 'create'])->name('ads.create');
-    Route::post('/ads', [App\Http\Controllers\AdvertisementController::class, 'store'])->name('ads.store');
-    Route::get('/ads/{ad}/payment', [App\Http\Controllers\AdvertisementController::class, 'paymentScreen'])->name('ads.payment');
-    Route::post('/ads/{ad}/payment', [App\Http\Controllers\AdvertisementController::class, 'processPayment'])->name('ads.pay');
-    Route::post('/ads/{ad}/lead', [App\Http\Controllers\AdvertisementController::class, 'submitLead'])->name('ads.lead.submit');
-    Route::get('/ads/{ad}/leads', [App\Http\Controllers\AdvertisementController::class, 'showLeads'])->name('ads.leads');
-    Route::get('/ads/{ad}/leads/download', [App\Http\Controllers\AdvertisementController::class, 'downloadLeads'])->name('ads.leads.download');
+    // Client Advertisements & Leads (clients only — admins use /admin/ads)
+    Route::middleware('client')->group(function () {
+        Route::get('/ads', [AdvertisementController::class, 'index'])->name('ads.index');
+        Route::get('/ads/create', [AdvertisementController::class, 'create'])->name('ads.create');
+        Route::post('/ads', [AdvertisementController::class, 'store'])->name('ads.store');
+        Route::get('/ads/{ad}/payment', [AdvertisementController::class, 'paymentScreen'])->name('ads.payment');
+        Route::post('/ads/{ad}/payment', [AdvertisementController::class, 'processPayment'])->name('ads.pay');
+        Route::get('/ads/{ad}/leads', [AdvertisementController::class, 'showLeads'])->name('ads.leads');
+        Route::get('/ads/{ad}/leads/download', [AdvertisementController::class, 'downloadLeads'])->name('ads.leads.download');
+    });
+
+    Route::post('/ads/{ad}/lead', [AdvertisementController::class, 'submitLead'])->name('ads.lead.submit');
 
     // Admin Ads Panel
     Route::middleware('admin')->prefix('admin')->name('admin.')->group(function () {
-        Route::get('/ads', [App\Http\Controllers\AdvertisementController::class, 'adminIndex'])->name('ads.index');
-        Route::post('/ads/{ad}/reject', [App\Http\Controllers\AdvertisementController::class, 'rejectAd'])->name('ads.reject');
+        Route::get('/ads', [AdvertisementController::class, 'adminIndex'])->name('ads.index');
+        Route::post('/ads/{ad}/reject', [AdvertisementController::class, 'rejectAd'])->name('ads.reject');
+        Route::get('/ads/{ad}/leads', [AdvertisementController::class, 'adminShowLeads'])->name('ads.leads');
+        Route::get('/ads/{ad}/leads/download', [AdvertisementController::class, 'adminDownloadLeads'])->name('ads.leads.download');
     });
 });

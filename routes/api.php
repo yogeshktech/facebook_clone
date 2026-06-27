@@ -58,5 +58,9 @@ Route::middleware('auth:sanctum')->group(function () {
 
     // Search & Notifications
     Route::get('/search', [ResourceController::class, 'search']);
-    Route::get('/notifications', [ResourceController::class, 'notifications']);
+    Route::get('/notifications', [\App\Http\Controllers\NotificationController::class, 'index']);
+    Route::get('/notifications/count', [\App\Http\Controllers\NotificationController::class, 'count']);
+    Route::post('/notifications/{id}/read', [\App\Http\Controllers\NotificationController::class, 'markAsRead']);
+    Route::post('/notifications/read-all', [\App\Http\Controllers\NotificationController::class, 'markAllAsRead']);
+    Route::post('/notifications/device-token', [\App\Http\Controllers\NotificationController::class, 'storeDeviceToken']);
 });
