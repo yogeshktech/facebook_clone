@@ -169,8 +169,8 @@ class DummyDataSeeder extends Seeder
             'cta_text' => 'Contact Us',
             'plan' => 'quarterly',
             'amount' => 2499.00,
-            'payment_status' => 'paid',
-            'status' => 'pending_approval',
+            'payment_status' => 'failed',
+            'status' => 'payment_failed',
         ]);
 
         $ad3 = \App\Models\Advertisement::create([
@@ -215,7 +215,7 @@ class DummyDataSeeder extends Seeder
 
         $this->command?->info('Dummy data, advertisements, and leads seeded!');
         $this->command?->info('Admin Ad Panel URL: /admin/ads');
-        $this->command?->info('Login: demo@newbook.test (admin) | yogesh@newbook.test (customer) | Password: password');
-        $this->command?->info('Admin panel: /admin/ads | Customer ads: /ads');
+        $this->command?->info('Client login: /client/login | yogesh@newbook.test / password');
+        $this->command?->info('Admin login: /admin/login | demo@newbook.test / password');
     }
 }

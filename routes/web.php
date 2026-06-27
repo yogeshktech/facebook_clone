@@ -4,6 +4,7 @@ use App\Http\Controllers\Auth\ForgotPasswordController;
 use App\Http\Controllers\Auth\LoginController;
 use App\Http\Controllers\Auth\RegisterController;
 use App\Http\Controllers\Auth\SocialAuthController;
+use App\Http\Controllers\AdvertisementController;
 use App\Http\Controllers\ChatController;
 use App\Http\Controllers\FeedController;
 use App\Http\Controllers\FollowController;
@@ -31,6 +32,8 @@ Route::get('/media/{path}', [MediaController::class, 'show'])
 // Guest routes
 Route::middleware('guest')->group(function () {
     Route::get('/login', [LoginController::class, 'showLoginForm'])->name('login');
+    Route::get('/client/login', [LoginController::class, 'showClientLoginForm'])->name('client.login');
+    Route::get('/admin/login', [LoginController::class, 'showAdminLoginForm'])->name('admin.login');
     Route::post('/login', [LoginController::class, 'login']);
     Route::get('/register', [RegisterController::class, 'showRegistrationForm'])->name('register');
     Route::get('/register/send-otp', fn () => redirect()->route('register'));
@@ -129,7 +132,6 @@ Route::middleware('auth')->group(function () {
     // Admin Ads Panel
     Route::middleware('admin')->prefix('admin')->name('admin.')->group(function () {
         Route::get('/ads', [App\Http\Controllers\AdvertisementController::class, 'adminIndex'])->name('ads.index');
-        Route::post('/ads/{ad}/approve', [App\Http\Controllers\AdvertisementController::class, 'approveAd'])->name('ads.approve');
         Route::post('/ads/{ad}/reject', [App\Http\Controllers\AdvertisementController::class, 'rejectAd'])->name('ads.reject');
     });
 });

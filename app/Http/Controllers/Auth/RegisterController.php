@@ -98,7 +98,8 @@ class RegisterController extends Controller
         event(new Registered($user));
         Auth::login($user);
 
-        return redirect()->route('feed.index')->with('success', 'Account created successfully!');
+        return redirect()->route('ads.index')
+            ->with('success', 'Welcome! Create your first ad and set your campaign budget.');
     }
 
     public function resendOtp(Request $request): RedirectResponse

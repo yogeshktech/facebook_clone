@@ -7,7 +7,7 @@
     <div class="max-w-md w-full mx-4">
         <div class="text-center mb-8">
             <x-brand-logo size="md" :showName="true" class="justify-center mb-2" />
-            <p class="text-gray-600 mt-2">Create an account with email OTP verification</p>
+            <p class="text-gray-600 mt-2">Client registration — create account to run ads on Newbook</p>
         </div>
 
         <div class="bg-white rounded-lg shadow-lg p-6">
@@ -36,7 +36,7 @@
             </form>
 
             <div class="mt-6 text-center">
-                <a href="{{ route('login') }}" class="text-fb-blue hover:underline">Already have an account?</a>
+                <a href="{{ route('client.login') }}" class="text-fb-blue hover:underline">Already registered? Client login</a>
             </div>
         </div>
     </div>

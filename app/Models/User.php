@@ -163,7 +163,12 @@ class User extends Authenticatable
 
     public function isAdmin(): bool
     {
-        return in_array($this->role, ['admin', 'superadmin']);
+        return in_array($this->role, ['admin', 'superadmin'], true);
+    }
+
+    public function isClient(): bool
+    {
+        return ! $this->isAdmin();
     }
 
     public function advertisements(): HasMany

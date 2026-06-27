@@ -66,8 +66,8 @@
 
             {{-- Plans selection --}}
             <div>
-                <h3 class="text-lg font-bold text-gray-900 mb-1">Select Advertising Plan</h3>
-                <p class="text-sm text-gray-500 mb-4">Choose a duration that fits your campaign goals. Ads run continuously during the plan period.</p>
+                <h3 class="text-lg font-bold text-gray-900 mb-1">Select Campaign Budget</h3>
+                <p class="text-sm text-gray-500 mb-4">Choose your ad budget plan. Payment amount will match the plan you select.</p>
                 
                 <input type="hidden" name="plan" id="selected-plan" value="{{ old('plan', 'monthly') }}">
                 

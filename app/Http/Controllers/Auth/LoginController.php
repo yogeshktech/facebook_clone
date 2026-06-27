@@ -15,7 +15,17 @@ class LoginController extends Controller
 
     public function showLoginForm(): View
     {
-        return view('auth.login');
+        return view('auth.login', ['loginMode' => 'client']);
+    }
+
+    public function showClientLoginForm(): View
+    {
+        return view('auth.login', ['loginMode' => 'client']);
+    }
+
+    public function showAdminLoginForm(): View
+    {
+        return view('auth.login', ['loginMode' => 'admin']);
     }
 
     public function login(Request $request): RedirectResponse
@@ -33,7 +43,7 @@ class LoginController extends Controller
                 return redirect()->intended(route('admin.ads.index'));
             }
 
-            return redirect()->intended(route('feed.index'));
+            return redirect()->intended(route('ads.index'));
         }
 
         return back()->withErrors([

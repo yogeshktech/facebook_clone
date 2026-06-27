@@ -39,12 +39,7 @@ class FeedController extends Controller
             ->limit(5)
             ->get();
 
-        $activeAds = \App\Models\Advertisement::where('status', 'approved')
-            ->where('payment_status', 'paid')
-            ->where(function($query) {
-                $query->whereNull('expires_at')
-                      ->orWhere('expires_at', '>', now());
-            })
+        $activeAds = \App\Models\Advertisement::running()
             ->inRandomOrder()
             ->get();
 

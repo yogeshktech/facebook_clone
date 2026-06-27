@@ -18,8 +18,13 @@
                     </div>
                 @endif
 
+                @if(session('error'))
+                    <div class="bg-red-50 text-red-600 border border-red-200 p-3 rounded-lg mb-4 text-sm">{{ session('error') }}</div>
+                @endif
+
                 <p class="text-xs text-gray-500 mb-4 bg-amber-50 border border-amber-100 rounded-lg p-3">
-                    Demo payment: use card <strong>4111 1111 1111 1111</strong>, expiry <strong>12/30</strong>, CVV <strong>123</strong>
+                    <strong>Test payment:</strong> Success card <strong>4111 1111 1111 1111</strong> (expiry 12/30, CVV 123) — ad auto-approves & runs.<br>
+                    <strong>Fail test:</strong> Card starting with <strong>4000</strong> — payment fails, ad will NOT run.
                 </p>
                 
                 <form action="{{ route('ads.pay', $ad) }}" method="POST" class="space-y-4">
@@ -102,9 +107,9 @@
 
                 <hr class="border-gray-100">
 
-                <div class="flex justify-between items-center text-gray-900">
-                    <span class="font-bold">Total Amount Due</span>
-                    <span class="text-xl font-extrabold text-indigo-600">₹{{ number_format($ad->amount, 2) }}</span>
+                <div class="flex justify-between text-sm">
+                    <span class="text-gray-600">Campaign Budget</span>
+                    <span class="font-extrabold text-indigo-600">₹{{ number_format($ad->amount, 2) }}</span>
                 </div>
             </div>
         </div>
