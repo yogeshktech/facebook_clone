@@ -76,7 +76,7 @@
                     updateCount(data.count || 0);
                     if (data.count > lastCount && data.notifications?.length && toastEl) {
                         const latest = data.notifications[0];
-                        toastEl.innerHTML = '<p class="font-semibold text-sm">' + (latest.data?.message || 'New notification') + '</p><p class="text-xs text-gray-500">' + latest.created_at + '</p>';
+                        toastEl.innerHTML = '<p class="font-semibold text-sm">' + (latest.title || latest.message || 'New notification') + '</p><p class="text-xs text-gray-500">' + (latest.created_at_human || 'Just now') + '</p>';
                         toastEl.classList.remove('hidden');
                         setTimeout(() => toastEl.classList.add('hidden'), 5000);
                     }
@@ -84,7 +84,7 @@
                 } catch (e) {}
             };
             poll();
-            setInterval(poll, 10000);
+            setInterval(poll, 8000);
             ['flash-success', 'flash-error'].forEach(id => {
                 const el = document.getElementById(id);
                 if (el) setTimeout(() => el.remove(), 4000);

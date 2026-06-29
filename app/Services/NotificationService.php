@@ -4,10 +4,13 @@ namespace App\Services;
 
 use App\Events\NotificationEvent;
 use App\Jobs\SendPushNotificationJob;
+use App\Models\Conversation;
 use App\Models\Friendship;
+use App\Models\Message;
 use App\Models\Post;
 use App\Models\SocialNotification;
 use App\Models\User;
+use Illuminate\Support\Str;
 
 class NotificationService
 {
@@ -43,9 +46,38 @@ class NotificationService
             report($e);
         }
 
-        SendPushNotificationJob::dispatch($notification);
+        SendPushNotificationJob::dispatchSync($notification);
 
         return $notification;
+    }
+
+    public static function chatMessage(Conversation $conversation, User $sender, Message $message): void
+    {
+        $conversation->loadMissing('users');
+
+        $preview = $message->body
+            ? Str::limit($message->body, 80)
+            : ($message->media_path ? 'Sent you a photo/video' : 'New message');
+
+        foreach ($conversation->users as $receiver) {
+            if ($receiver->id === $sender->id) {
+                continue;
+            }
+
+            try {
+                self::notify(
+                    receiver: $receiver,
+                    sender: $sender,
+                    type: 'message',
+                    title: $sender->name.' messaged you',
+                    message: $preview,
+                    referenceId: $conversation->id,
+                    url: route('chat.show', $conversation),
+                );
+            } catch (\Throwable $e) {
+                report($e);
+            }
+        }
     }
 
     public static function postInteraction(User $receiver, User $sender, Post $post, string $action): void

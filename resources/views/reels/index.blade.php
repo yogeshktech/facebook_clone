@@ -7,19 +7,71 @@
     {{-- Upload reel --}}
     <div class="bg-white rounded-lg shadow p-4 mb-4 mx-2 sm:mx-0">
         <h2 class="font-bold text-lg mb-3">Create Reel</h2>
-        <form action="{{ route('reels.store') }}" method="POST" enctype="multipart/form-data" class="space-y-3">
+        @if(session('error'))
+            <div class="bg-red-50 text-red-600 border border-red-200 p-3 rounded-lg mb-3 text-sm">{{ session('error') }}</div>
+        @endif
+        <form action="{{ route('reels.store') }}" method="POST" enctype="multipart/form-data" class="space-y-3" id="reel-upload-form">
             @csrf
             <input type="text" name="content" placeholder="Add a caption..." maxlength="500"
                 class="w-full bg-fb-gray rounded-lg px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-fb-blue">
             <label class="flex items-center justify-center gap-2 border-2 border-dashed border-gray-300 rounded-lg p-4 cursor-pointer hover:border-fb-blue transition">
                 <svg class="w-6 h-6 text-fb-blue" fill="currentColor" viewBox="0 0 24 24"><path d="M18 4l2 4h-3l-2-4h-2l2 4h-3l-2-4H8l2 4H7L5 4H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V4h-4z"/></svg>
-                <span class="text-sm font-semibold text-gray-600" id="reel-file-label">Choose video</span>
-                <input type="file" name="media" accept="video/*" required class="hidden" id="reel-file-input"
-                    onchange="document.getElementById('reel-file-label').textContent = this.files[0]?.name || 'Choose video'">
+                <span class="text-sm font-semibold text-gray-600" id="reel-file-label">Choose video (max 50MB)</span>
+                <input type="file" name="media" accept="video/*" required class="hidden" id="reel-file-input">
             </label>
-            <button type="submit" class="w-full bg-fb-blue text-white font-semibold py-2.5 rounded-lg hover:bg-fb-blue-dark transition">Post Reel</button>
+            <p id="reel-file-size" class="text-xs text-gray-500 hidden"></p>
+            <button type="submit" id="reel-submit-btn" class="w-full bg-fb-blue text-white font-semibold py-2.5 rounded-lg hover:bg-fb-blue-dark transition disabled:opacity-50">Post Reel</button>
         </form>
     </div>
+
+<script>
+(function () {
+    const MAX_BYTES = 50 * 1024 * 1024;
+    const input = document.getElementById('reel-file-input');
+    const label = document.getElementById('reel-file-label');
+    const sizeEl = document.getElementById('reel-file-size');
+    const form = document.getElementById('reel-upload-form');
+    const btn = document.getElementById('reel-submit-btn');
+
+    function formatSize(bytes) {
+        if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
+        return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
+    }
+
+    input?.addEventListener('change', function () {
+        const file = this.files?.[0];
+        if (!file) return;
+        label.textContent = file.name;
+        sizeEl.textContent = 'Size: ' + formatSize(file.size);
+        sizeEl.classList.remove('hidden');
+        if (file.size > MAX_BYTES) {
+            sizeEl.className = 'text-xs text-red-600 font-medium';
+            sizeEl.textContent = 'Too large (' + formatSize(file.size) + '). Maximum is 50MB.';
+            btn.disabled = true;
+        } else {
+            sizeEl.className = 'text-xs text-gray-500';
+            btn.disabled = false;
+        }
+    });
+
+    form?.addEventListener('submit', function (e) {
+        const file = input?.files?.[0];
+        if (!file) return;
+        if (file.size > MAX_BYTES) {
+            e.preventDefault();
+            alert('Video must be under 50MB.');
+            return;
+        }
+        if (form.dataset.submitting === '1') {
+            e.preventDefault();
+            return;
+        }
+        form.dataset.submitting = '1';
+        btn.disabled = true;
+        btn.textContent = 'Uploading...';
+    });
+})();
+</script>
 
     {{-- Reels feed --}}
     <div class="space-y-4 px-2 sm:px-0 pb-4">

@@ -27,7 +27,7 @@ class StoryController extends Controller
         Story::pruneExpired();
 
         $validated = $request->validate([
-            'media' => ['required', 'file', 'mimes:jpg,jpeg,png,gif,webp,mp4,webm', 'max:5120'],
+            'media' => ['required', 'file', 'mimes:jpg,jpeg,png,gif,webp,mp4,webm,mov', 'max:51200'],
             'caption' => ['nullable', 'string', 'max:500'],
         ]);
 

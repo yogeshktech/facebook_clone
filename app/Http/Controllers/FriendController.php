@@ -59,7 +59,11 @@ class FriendController extends Controller
             'status' => 'pending',
         ]);
 
-        NotificationService::friendRequest($user, $friendship);
+        try {
+            NotificationService::friendRequest($user, $friendship);
+        } catch (\Throwable $e) {
+            report($e);
+        }
 
         return back()->with('success', 'Friend request sent!');
     }

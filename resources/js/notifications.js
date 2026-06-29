@@ -146,11 +146,16 @@ export function initNotificationBell() {
 
     refresh(false);
 
+    // Poll every 8s — works without Reverb/WebSocket on live server
+    pollTimer = setInterval(() => refresh(true), 8000);
+
     if (window.Echo && window.authUserId) {
-        window.Echo.private(`notification.${window.authUserId}`)
-            .listen('.NotificationEvent', () => refresh(true));
-    } else {
-        pollTimer = setInterval(() => refresh(true), 15000);
+        try {
+            window.Echo.private(`notification.${window.authUserId}`)
+                .listen('.NotificationEvent', () => refresh(true));
+        } catch (e) {
+            console.warn('Echo notification channel unavailable, using polling only.');
+        }
     }
 
     initFirebasePush();

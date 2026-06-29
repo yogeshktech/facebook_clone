@@ -223,6 +223,7 @@ class PostController extends Controller
 
         $conversation->touch();
         broadcast(new MessageSent($message))->toOthers();
+        NotificationService::chatMessage($conversation, auth()->user(), $message);
 
         $post->increment('shares_count');
 

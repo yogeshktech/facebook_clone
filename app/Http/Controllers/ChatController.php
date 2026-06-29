@@ -5,7 +5,9 @@ namespace App\Http\Controllers;
 use App\Events\MessageSent;
 use App\Models\Conversation;
 use App\Models\Message;
+use App\Models\Message;
 use App\Models\User;
+use App\Services\NotificationService;
 use App\Support\MediaStorage;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
@@ -152,6 +154,8 @@ class ChatController extends Controller
 
         $conversation->touch();
         broadcast(new MessageSent($message))->toOthers();
+
+        NotificationService::chatMessage($conversation, auth()->user(), $message);
 
         if ($request->expectsJson()) {
             $message->refresh();
