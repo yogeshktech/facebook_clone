@@ -101,6 +101,42 @@
         };
 
         let deferredPwaPrompt = null;
+        const PWA_DISMISS_KEY = 'pwa-install-dismissed';
+
+        function isPwaInstalled() {
+            return window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone === true;
+        }
+        function isIosDevice() {
+            return /iphone|ipad|ipod/i.test(navigator.userAgent);
+        }
+        function wasPwaDismissedRecently() {
+            const d = localStorage.getItem(PWA_DISMISS_KEY);
+            if (!d) return false;
+            return (Date.now() - parseInt(d, 10)) / 86400000 < 7;
+        }
+
+        window.showPwaInstallModal = function (iosMode) {
+            if (isPwaInstalled()) return;
+            const modal = document.getElementById('pwa-install-modal');
+            const actions = document.getElementById('pwa-install-actions');
+            const iosInstructions = document.getElementById('pwa-ios-instructions');
+            if (!modal) return;
+            if (iosMode || (isIosDevice() && !deferredPwaPrompt)) {
+                actions?.classList.add('hidden');
+                iosInstructions?.classList.remove('hidden');
+            } else {
+                actions?.classList.remove('hidden');
+                iosInstructions?.classList.add('hidden');
+            }
+            modal.classList.remove('hidden');
+            document.body.style.overflow = 'hidden';
+        };
+
+        window.dismissPwaModal = function () {
+            document.getElementById('pwa-install-modal')?.classList.add('hidden');
+            document.body.style.overflow = '';
+            localStorage.setItem(PWA_DISMISS_KEY, String(Date.now()));
+        };
 
         window.openMobileMenu = function () {
             document.getElementById('mobile-offcanvas')?.classList.remove('translate-x-full');
@@ -144,11 +180,14 @@
         };
 
         window.installPwa = async function () {
-            if (!deferredPwaPrompt) return;
-            deferredPwaPrompt.prompt();
-            await deferredPwaPrompt.userChoice;
-            deferredPwaPrompt = null;
-            document.getElementById('pwa-install-btn')?.classList.add('hidden');
+            if (deferredPwaPrompt) {
+                deferredPwaPrompt.prompt();
+                await deferredPwaPrompt.userChoice;
+                deferredPwaPrompt = null;
+                dismissPwaModal();
+                return;
+            }
+            if (isIosDevice()) showPwaInstallModal(true);
         };
 
         document.querySelectorAll('.comment-form').forEach((form) => {
@@ -160,13 +199,20 @@
         });
 
         if ('serviceWorker' in navigator) {
-            const swPath = window.firebaseConfig?.apiKey ? '/firebase-messaging-sw.js' : '/sw.js';
-            navigator.serviceWorker.register(swPath).catch(() => {});
+            navigator.serviceWorker.register('/sw.js', { scope: '/' }).catch(() => {});
         }
-        window.addEventListener('beforeinstallprompt', (e) => {
-            e.preventDefault();
-            deferredPwaPrompt = e;
-            document.getElementById('pwa-install-btn')?.classList.remove('hidden');
-        });
+
+        if (!isPwaInstalled()) {
+            window.addEventListener('beforeinstallprompt', (e) => {
+                e.preventDefault();
+                deferredPwaPrompt = e;
+                if (!wasPwaDismissedRecently()) {
+                    setTimeout(() => showPwaInstallModal(false), 1500);
+                }
+            });
+            if (isIosDevice() && /mobile/i.test(navigator.userAgent) && !wasPwaDismissedRecently()) {
+                setTimeout(() => showPwaInstallModal(true), 2000);
+            }
+        }
     </script>
 @endif

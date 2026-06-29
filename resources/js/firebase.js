@@ -36,19 +36,21 @@ export async function registerFirebaseMessaging(messaging, vapidKey) {
         return null;
     }
 
-    if ('serviceWorker' in navigator) {
-        await navigator.serviceWorker.register('/firebase-messaging-sw.js');
-    }
-
     const permission = await Notification.requestPermission();
     if (permission !== 'granted') {
         return null;
     }
 
-    return getToken(messaging, {
-        vapidKey,
-        serviceWorkerRegistration: await navigator.serviceWorker.ready,
-    });
+    if ('serviceWorker' in navigator) {
+        const existing = await navigator.serviceWorker.getRegistration('/');
+        const registration = existing || await navigator.serviceWorker.register('/sw.js');
+        return getToken(messaging, {
+            vapidKey,
+            serviceWorkerRegistration: registration,
+        });
+    }
+
+    return null;
 }
 
 export { getToken, onMessage };

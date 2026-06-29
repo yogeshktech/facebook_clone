@@ -37,6 +37,7 @@
         @include('layouts.navbar')
         @include('layouts.mobile-nav')
         @include('layouts.mobile-menu')
+        @include('layouts.pwa-install-modal')
     @endauth
 
     @if(session('success'))

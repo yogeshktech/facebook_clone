@@ -1,18 +1,32 @@
 {
+    "id": "/",
     "name": "Newbook",
     "short_name": "Newbook",
     "description": "Connect with friends and share moments on Newbook",
     "start_url": "/feed",
+    "scope": "/",
     "display": "standalone",
     "background_color": "#F0F2F5",
     "theme_color": "#6366F1",
     "orientation": "portrait-primary",
     "icons": [
         {
-            "src": "/favicon.svg",
-            "sizes": "any",
-            "type": "image/svg+xml",
+            "src": "/icons/icon-192.png",
+            "sizes": "192x192",
+            "type": "image/png",
             "purpose": "any"
+        },
+        {
+            "src": "/icons/icon-512.png",
+            "sizes": "512x512",
+            "type": "image/png",
+            "purpose": "any"
+        },
+        {
+            "src": "/icons/icon-512.png",
+            "sizes": "512x512",
+            "type": "image/png",
+            "purpose": "maskable"
         }
     ]
 }

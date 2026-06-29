@@ -58,7 +58,7 @@
 
         <hr class="my-2 border-gray-200">
 
-        <button type="button" id="pwa-install-btn" class="hidden sidebar-link w-full text-left text-fb-blue" onclick="installPwa()">
+        <button type="button" id="pwa-install-btn" class="sidebar-link w-full text-left text-fb-blue" onclick="closeMobileMenu(); showPwaInstallModal(false);">
             <svg class="w-9 h-9 text-fb-blue" fill="currentColor" viewBox="0 0 24 24"><path d="M19 9h-4V3H9v6H5l7 7 7-7zM5 18v2h14v-2H5z"/></svg>
             <span>Install App</span>
         </button>
