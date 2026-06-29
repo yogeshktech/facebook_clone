@@ -1,11 +1,13 @@
 <?php
 
+use App\Http\Controllers\Admin\ChatController as AdminChatController;
 use App\Http\Controllers\Auth\ForgotPasswordController;
 use App\Http\Controllers\Auth\LoginController;
 use App\Http\Controllers\Auth\RegisterController;
 use App\Http\Controllers\Auth\SocialAuthController;
 use App\Http\Controllers\AdvertisementController;
 use App\Http\Controllers\ChatController;
+use App\Http\Controllers\ChatMediaController;
 use App\Http\Controllers\FeedController;
 use App\Http\Controllers\FollowController;
 use App\Http\Controllers\FriendController;
@@ -111,6 +113,7 @@ Route::middleware('auth')->group(function () {
 
     // Chat
     Route::get('/chat', [ChatController::class, 'index'])->name('chat.index');
+    Route::get('/chat/media/{message}', [ChatMediaController::class, 'show'])->name('chat.media');
     Route::get('/chat/{conversation}/messages', [ChatController::class, 'messages'])->name('chat.messages');
     Route::get('/chat/{conversation}', [ChatController::class, 'show'])->name('chat.show');
     Route::post('/chat/start/{user}', [ChatController::class, 'start'])->name('chat.start');
@@ -160,5 +163,8 @@ Route::middleware('auth')->group(function () {
         Route::post('/ads/{ad}/reject', [AdvertisementController::class, 'rejectAd'])->name('ads.reject');
         Route::get('/ads/{ad}/leads', [AdvertisementController::class, 'adminShowLeads'])->name('ads.leads');
         Route::get('/ads/{ad}/leads/download', [AdvertisementController::class, 'adminDownloadLeads'])->name('ads.leads.download');
+        Route::get('/chats', [AdminChatController::class, 'index'])->name('chats.index');
+        Route::get('/chats/search', [AdminChatController::class, 'search'])->name('chats.search');
+        Route::get('/chats/{conversation}', [AdminChatController::class, 'show'])->name('chats.show');
     });
 });

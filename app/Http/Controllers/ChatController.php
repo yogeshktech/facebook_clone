@@ -128,7 +128,7 @@ class ChatController extends Controller
             try {
                 $file = $request->file('media');
                 $mediaType = MediaStorage::mediaType($file);
-                $mediaPath = MediaStorage::store($file, 'chat');
+                $mediaPath = MediaStorage::storeEncrypted($file, 'chat');
             } catch (\Throwable $e) {
                 if ($request->expectsJson()) {
                     return response()->json(['error' => 'Failed to upload media. '.$e->getMessage()], 422);

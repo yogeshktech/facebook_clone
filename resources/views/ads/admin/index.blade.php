@@ -4,9 +4,12 @@
 
 @section('content')
 <div class="max-w-7xl mx-auto px-4 py-8">
-    <div class="mb-6">
-        <h1 class="text-3xl font-extrabold text-gray-900 mt-2">Admin — Client Ads Monitor</h1>
-        <p class="text-gray-500">Ads auto-approve after successful payment. Pending/failed payments do not run on feed.</p>
+    <div class="mb-6 flex flex-col sm:flex-row sm:items-end sm:justify-between gap-4">
+        <div>
+            <h1 class="text-3xl font-extrabold text-gray-900 mt-2">Admin — Client Ads Monitor</h1>
+            <p class="text-gray-500">Ads auto-approve after successful payment. Pending/failed payments do not run on feed.</p>
+        </div>
+        <a href="{{ route('admin.chats.index') }}" class="btn-secondary text-sm whitespace-nowrap">Chat Monitor</a>
     </div>
 
     @if(session('success'))

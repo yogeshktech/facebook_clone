@@ -67,7 +67,7 @@ class ChatController extends Controller
         if ($request->hasFile('media')) {
             $file = $request->file('media');
             $mediaType = MediaStorage::mediaType($file);
-            $mediaPath = MediaStorage::store($file, 'chat');
+            $mediaPath = MediaStorage::storeEncrypted($file, 'chat');
         }
 
         $message = Message::create([

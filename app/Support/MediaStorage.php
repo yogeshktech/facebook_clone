@@ -5,6 +5,7 @@ namespace App\Support;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Str;
 
 class MediaStorage
 {
@@ -98,6 +99,53 @@ class MediaStorage
         }
 
         return $file->store($folder, ['disk' => 'public', 'visibility' => 'public']);
+    }
+
+    public static function storeEncrypted(UploadedFile $file, string $folder): string
+    {
+        $contents = file_get_contents($file->getRealPath());
+        $encrypted = ChatEncryption::encryptBytes($contents);
+        $filename = trim($folder, '/').'/'.Str::uuid().'.enc';
+        $primaryDisk = self::disk();
+
+        try {
+            Storage::disk($primaryDisk)->put($filename, $encrypted);
+            if (Storage::disk($primaryDisk)->exists($filename)) {
+                return $filename;
+            }
+        } catch (\Throwable $e) {
+            Log::warning('Encrypted media upload failed on primary disk.', [
+                'disk' => $primaryDisk,
+                'error' => $e->getMessage(),
+            ]);
+        }
+
+        Storage::disk('public')->put($filename, $encrypted);
+
+        return $filename;
+    }
+
+    public static function readEncrypted(string $path): ?string
+    {
+        $relativePath = self::extractRelativePath($path);
+
+        foreach ([config('filesystems.media_disk', 's3'), 'public'] as $disk) {
+            try {
+                if (Storage::disk($disk)->exists($relativePath)) {
+                    $encrypted = Storage::disk($disk)->get($relativePath);
+
+                    return ChatEncryption::decryptBytes($encrypted);
+                }
+            } catch (\Throwable $e) {
+                Log::warning('Encrypted media read failed', [
+                    'disk' => $disk,
+                    'path' => $relativePath,
+                    'error' => $e->getMessage(),
+                ]);
+            }
+        }
+
+        return null;
     }
 
     public static function delete(?string $path): void

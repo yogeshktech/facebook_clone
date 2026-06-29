@@ -2,7 +2,9 @@
 
 namespace App\Models;
 
+use App\Support\ChatEncryption;
 use App\Support\MediaStorage;
+use Illuminate\Database\Eloquent\Casts\Attribute;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
@@ -21,8 +23,29 @@ class Message extends Model
 
     protected $appends = ['media_url', 'is_sender'];
 
+    protected function body(): Attribute
+    {
+        return Attribute::make(
+            get: fn (?string $value) => ChatEncryption::decrypt($value),
+            set: fn (?string $value) => ChatEncryption::encrypt($value ?? ''),
+        );
+    }
+
+    public function getRawBody(): string
+    {
+        return $this->attributes['body'] ?? '';
+    }
+
     public function getMediaUrlAttribute(): ?string
     {
+        if (! $this->media_path) {
+            return null;
+        }
+
+        if (ChatEncryption::isEncryptedMedia($this->media_path)) {
+            return route('chat.media', $this->id);
+        }
+
         return MediaStorage::url($this->media_path);
     }
 
