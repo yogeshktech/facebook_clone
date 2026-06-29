@@ -1,4 +1,4 @@
-const CACHE_NAME = 'newbook-v2';
+const CACHE_NAME = 'newbook-v3';
 const PRECACHE_URLS = ['/', '/feed', '/manifest.json', '/icons/icon-192.png', '/icons/icon-512.png', '/images/newbook-logo.jpg'];
 
 self.addEventListener('install', (event) => {
@@ -44,11 +44,19 @@ try {
     if (self.firebaseConfig?.apiKey) {
         firebase.initializeApp(self.firebaseConfig);
         firebase.messaging().onBackgroundMessage((payload) => {
-            const title = payload.notification?.title || 'Newbook';
-            self.registration.showNotification(title, {
-                body: payload.notification?.body || '',
+            const title = payload.notification?.title || 'NEWBOOK';
+            const body = payload.notification?.body || '';
+            const url = payload.data?.url || payload.fcmOptions?.link || '/notifications';
+
+            return self.registration.showNotification(title, {
+                body,
                 icon: '/icons/icon-192.png',
-                data: { url: payload.data?.url || '/' },
+                badge: '/icons/icon-192.png',
+                vibrate: [150, 80, 150, 80, 150],
+                silent: false,
+                renotify: true,
+                tag: payload.data?.type ? `newbook-${payload.data.type}` : 'newbook-push',
+                data: { url },
             });
         });
     }

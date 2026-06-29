@@ -86,6 +86,18 @@ class FriendController extends Controller
         return back()->with('success', 'Friend request rejected.');
     }
 
+    public function cancel(Friendship $friendship): RedirectResponse
+    {
+        abort_unless(
+            $friendship->user_id === auth()->id() && $friendship->status === 'pending',
+            403
+        );
+
+        $friendship->delete();
+
+        return back()->with('success', 'Friend request cancelled.');
+    }
+
     public function unfriend(User $user): RedirectResponse
     {
         Friendship::where(function ($q) use ($user) {

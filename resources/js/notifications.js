@@ -2,6 +2,8 @@ import './echo';
 
 const csrfToken = () => document.querySelector('meta[name="csrf-token"]')?.content;
 
+const NOTIFICATION_ICON = '/icons/icon-192.png';
+
 export function updateNotificationBadges(count) {
     const label = count > 9 ? '9+' : String(count);
     ['notification-count', 'mobile-notification-count', 'dropdown-notification-count'].forEach(id => {
@@ -14,6 +16,81 @@ export function updateNotificationBadges(count) {
             el.classList.add('hidden');
         }
     });
+}
+
+export function playNotificationSound() {
+    try {
+        const AudioCtx = window.AudioContext || window.webkitAudioContext;
+        if (!AudioCtx) return;
+
+        const ctx = new AudioCtx();
+        const playTone = (freq, start, duration) => {
+            const osc = ctx.createOscillator();
+            const gain = ctx.createGain();
+            osc.type = 'sine';
+            osc.frequency.value = freq;
+            gain.gain.setValueAtTime(0.0001, start);
+            gain.gain.exponentialRampToValueAtTime(0.25, start + 0.02);
+            gain.gain.exponentialRampToValueAtTime(0.0001, start + duration);
+            osc.connect(gain);
+            gain.connect(ctx.destination);
+            osc.start(start);
+            osc.stop(start + duration);
+        };
+
+        const now = ctx.currentTime;
+        playTone(880, now, 0.15);
+        playTone(1175, now + 0.18, 0.2);
+
+        if (navigator.vibrate) {
+            navigator.vibrate([120, 60, 120]);
+        }
+    } catch {
+        // ignore if audio blocked
+    }
+}
+
+export async function showSystemNotification({ title, body, url, tag }) {
+    if (typeof Notification === 'undefined' || Notification.permission !== 'granted') {
+        return;
+    }
+
+    const options = {
+        body: body || '',
+        icon: NOTIFICATION_ICON,
+        badge: NOTIFICATION_ICON,
+        vibrate: [150, 80, 150],
+        silent: false,
+        renotify: true,
+        requireInteraction: false,
+        tag: tag || 'newbook-alert',
+        data: { url: url || '/notifications' },
+    };
+
+    try {
+        if ('serviceWorker' in navigator) {
+            const registration = await navigator.serviceWorker.ready;
+            await registration.showNotification(title, options);
+            return;
+        }
+        new Notification(title, options);
+    } catch {
+        // fallback silent
+    }
+}
+
+export async function alertUser(notification) {
+    const title = notification.title || notification.message || 'NEWBOOK';
+    const body = notification.message || notification.body || '';
+    const url = notification.url || '/notifications';
+    const tag = notification.id ? `newbook-${notification.id}` : `newbook-${Date.now()}`;
+
+    showNotificationToast(notification);
+    playNotificationSound();
+
+    if (Notification.permission === 'granted') {
+        await showSystemNotification({ title, body, url, tag });
+    }
 }
 
 export function showNotificationToast(notification) {
@@ -85,7 +162,7 @@ export async function refreshNotificationUI({ showToastOnNew = false, previousCo
     }
 
     if (showToastOnNew && count > previousCount && data.notifications?.length) {
-        showNotificationToast(data.notifications[0]);
+        await alertUser(data.notifications[0]);
     }
 
     return count;
@@ -108,16 +185,43 @@ function bindDropdownItemClicks(container) {
     });
 }
 
+function hidePermissionBanner() {
+    document.getElementById('notification-permission-banner')?.classList.add('hidden');
+}
+
+function showPermissionBanner() {
+    if (Notification.permission !== 'default') return;
+    document.getElementById('notification-permission-banner')?.classList.remove('hidden');
+}
+
+export async function enablePushNotifications() {
+    hidePermissionBanner();
+
+    if (typeof Notification === 'undefined') {
+        alert('Notifications are not supported in this browser.');
+        return;
+    }
+
+    const permission = await Notification.requestPermission();
+    if (permission !== 'granted') {
+        alert('Please allow notifications in browser settings to get message alerts with sound.');
+        return;
+    }
+
+    await initFirebasePush();
+}
+
+window.enablePushNotifications = enablePushNotifications;
+
 export function initNotificationBell() {
     const bellWrap = document.getElementById('notification-bell');
     const dropdown = document.getElementById('notification-dropdown');
     if (!bellWrap) return;
 
     let lastCount = 0;
-    let pollTimer = null;
 
-    const refresh = async (showToast = false) => {
-        lastCount = await refreshNotificationUI({ showToastOnNew: showToast, previousCount: lastCount });
+    const refresh = async (showAlert = false) => {
+        lastCount = await refreshNotificationUI({ showToastOnNew: showAlert, previousCount: lastCount });
     };
 
     bellWrap.querySelector('button')?.addEventListener('click', (e) => {
@@ -146,16 +250,22 @@ export function initNotificationBell() {
 
     refresh(false);
 
-    // Poll every 8s — works without Reverb/WebSocket on live server
-    pollTimer = setInterval(() => refresh(true), 8000);
+    setInterval(() => refresh(true), 8000);
 
     if (window.Echo && window.authUserId) {
         try {
             window.Echo.private(`notification.${window.authUserId}`)
-                .listen('.NotificationEvent', () => refresh(true));
+                .listen('.NotificationEvent', async (payload) => {
+                    await alertUser(payload || {});
+                    await refresh(false);
+                });
         } catch (e) {
             console.warn('Echo notification channel unavailable, using polling only.');
         }
+    }
+
+    if (Notification.permission === 'default') {
+        setTimeout(showPermissionBanner, 3000);
     }
 
     initFirebasePush();
@@ -184,11 +294,13 @@ async function initFirebasePush() {
             });
         }
 
-        onMessage(firebase.messaging, (payload) => {
-            const title = payload.notification?.title || 'New notification';
-            const body = payload.notification?.body || '';
-            showNotificationToast({ title, message: body, created_at_human: 'Just now' });
-            refreshNotificationUI({ showToastOnNew: false });
+        onMessage(firebase.messaging, async (payload) => {
+            await alertUser({
+                title: payload.notification?.title,
+                message: payload.notification?.body,
+                url: payload.data?.url,
+            });
+            await refreshNotificationUI({ showToastOnNew: false });
         });
     } catch (e) {
         console.warn('Firebase push not available:', e);

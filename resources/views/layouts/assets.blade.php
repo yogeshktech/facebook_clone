@@ -66,6 +66,50 @@
                     }
                 });
             };
+            const playNotificationSound = () => {
+                try {
+                    const AudioCtx = window.AudioContext || window.webkitAudioContext;
+                    if (!AudioCtx) return;
+                    const ctx = new AudioCtx();
+                    const playTone = (freq, start, duration) => {
+                        const osc = ctx.createOscillator();
+                        const gain = ctx.createGain();
+                        osc.type = 'sine';
+                        osc.frequency.value = freq;
+                        gain.gain.setValueAtTime(0.0001, start);
+                        gain.gain.exponentialRampToValueAtTime(0.25, start + 0.02);
+                        gain.gain.exponentialRampToValueAtTime(0.0001, start + duration);
+                        osc.connect(gain);
+                        gain.connect(ctx.destination);
+                        osc.start(start);
+                        osc.stop(start + duration);
+                    };
+                    const now = ctx.currentTime;
+                    playTone(880, now, 0.15);
+                    playTone(1175, now + 0.18, 0.2);
+                    if (navigator.vibrate) navigator.vibrate([120, 60, 120]);
+                } catch (e) {}
+            };
+            const showSystemNotification = async (title, body, url) => {
+                if (typeof Notification === 'undefined' || Notification.permission !== 'granted') return;
+                const options = {
+                    body: body || '',
+                    icon: '/icons/icon-192.png',
+                    badge: '/icons/icon-192.png',
+                    vibrate: [150, 80, 150],
+                    silent: false,
+                    tag: 'newbook-alert',
+                    data: { url: url || '/notifications' },
+                };
+                try {
+                    if ('serviceWorker' in navigator) {
+                        const reg = await navigator.serviceWorker.ready;
+                        await reg.showNotification(title, options);
+                    } else {
+                        new Notification(title, options);
+                    }
+                } catch (e) {}
+            };
             const poll = async () => {
                 try {
                     const res = await fetch('/notifications/unread', {
@@ -76,9 +120,12 @@
                     updateCount(data.count || 0);
                     if (data.count > lastCount && data.notifications?.length && toastEl) {
                         const latest = data.notifications[0];
-                        toastEl.innerHTML = '<p class="font-semibold text-sm">' + (latest.title || latest.message || 'New notification') + '</p><p class="text-xs text-gray-500">' + (latest.created_at_human || 'Just now') + '</p>';
+                        const title = latest.title || latest.message || 'NEWBOOK';
+                        toastEl.innerHTML = '<p class="font-semibold text-sm">' + title + '</p><p class="text-xs text-gray-500">' + (latest.created_at_human || 'Just now') + '</p>';
                         toastEl.classList.remove('hidden');
                         setTimeout(() => toastEl.classList.add('hidden'), 5000);
+                        playNotificationSound();
+                        showSystemNotification(title, latest.message || '', latest.url || '/notifications');
                     }
                     lastCount = data.count;
                 } catch (e) {}

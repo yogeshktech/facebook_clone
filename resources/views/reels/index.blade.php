@@ -77,8 +77,25 @@
     <div class="space-y-4 px-2 sm:px-0 pb-4">
         @forelse($reels as $reel)
         <div class="bg-black rounded-xl overflow-hidden relative" style="height: 70vh; max-height: 600px;" id="reel-{{ $reel->id }}" data-reel-id="{{ $reel->id }}">
-            <video src="{{ $reel->media_url }}" class="w-full h-full object-contain" loop playsinline muted
-                onclick="this.muted = false; this.paused ? this.play() : this.pause()"></video>
+            <video src="{{ $reel->media_url }}" class="w-full h-full object-contain reel-video" loop playsinline muted preload="metadata"></video>
+
+            {{-- Sound toggle --}}
+            <button type="button"
+                class="reel-sound-btn absolute top-4 right-4 z-20 w-10 h-10 rounded-full bg-black/50 text-white flex items-center justify-center hover:bg-black/70 transition"
+                aria-label="Toggle sound">
+                <svg class="w-5 h-5 icon-muted" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5.586 15H4a1 1 0 01-1-1v-4a1 1 0 011-1h1.586l4.707-4.707C10.923 3.663 12 4.109 12 5v14c0 .891-1.077 1.337-1.707.707L5.586 15z"/>
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2"/>
+                </svg>
+                <svg class="w-5 h-5 icon-unmuted hidden" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.536 8.464a5 5 0 010 7.072M12 6v12m-6.536-9.536a9 9 0 0113.072 0M5.586 15H4a1 1 0 01-1-1v-4a1 1 0 011-1h1.586l4.707-4.707C10.923 3.663 12 4.109 12 5v14c0 .891-1.077 1.337-1.707.707L5.586 15z"/>
+                </svg>
+            </button>
+
+            {{-- Tap hint when muted --}}
+            <div class="reel-tap-sound absolute top-16 left-1/2 -translate-x-1/2 z-20 bg-black/60 text-white text-xs px-3 py-1.5 rounded-full pointer-events-none">
+                Tap speaker for sound
+            </div>
 
             {{-- Overlay info --}}
             <div class="absolute bottom-0 left-0 right-16 p-4 bg-gradient-to-t from-black/80 to-transparent">
@@ -156,6 +173,77 @@
 document.addEventListener('DOMContentLoaded', () => {
     const csrfToken = document.querySelector('meta[name="csrf-token"]')?.content;
     const recordedViews = new Set();
+    let reelsSoundOn = sessionStorage.getItem('reelsSoundOn') === '1';
+    let activeReelEl = null;
+
+    function getVideo(container) {
+        return container?.querySelector('.reel-video');
+    }
+
+    function updateSoundUi(container) {
+        const btn = container?.querySelector('.reel-sound-btn');
+        const hint = container?.querySelector('.reel-tap-sound');
+        const video = getVideo(container);
+        if (!btn || !video) return;
+
+        const isActive = container === activeReelEl;
+        const muted = !reelsSoundOn || !isActive;
+        video.muted = muted;
+        video.volume = reelsSoundOn ? 1 : 0;
+
+        btn.querySelector('.icon-muted')?.classList.toggle('hidden', !muted);
+        btn.querySelector('.icon-unmuted')?.classList.toggle('hidden', muted);
+        hint?.classList.toggle('hidden', reelsSoundOn);
+    }
+
+    function pauseAllExcept(activeContainer) {
+        document.querySelectorAll('[data-reel-id]').forEach(container => {
+            const video = getVideo(container);
+            if (!video) return;
+            if (container !== activeContainer) {
+                video.pause();
+            }
+            updateSoundUi(container);
+        });
+    }
+
+    function playReel(container) {
+        const video = getVideo(container);
+        if (!video) return;
+        activeReelEl = container;
+        pauseAllExcept(container);
+        updateSoundUi(container);
+        video.play().catch(() => {});
+    }
+
+    document.querySelectorAll('.reel-sound-btn').forEach(btn => {
+        btn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            reelsSoundOn = !reelsSoundOn;
+            sessionStorage.setItem('reelsSoundOn', reelsSoundOn ? '1' : '0');
+            document.querySelectorAll('[data-reel-id]').forEach(updateSoundUi);
+            if (reelsSoundOn && activeReelEl) {
+                const video = getVideo(activeReelEl);
+                if (video) {
+                    video.muted = false;
+                    video.volume = 1;
+                    video.play().catch(() => {});
+                }
+            }
+        });
+    });
+
+    document.querySelectorAll('.reel-video').forEach(video => {
+        video.addEventListener('click', () => {
+            const container = video.closest('[data-reel-id]');
+            if (!container) return;
+            if (video.paused) {
+                playReel(container);
+            } else {
+                video.pause();
+            }
+        });
+    });
 
     async function recordReelView(reelId) {
         if (recordedViews.has(reelId)) return;
@@ -180,19 +268,22 @@ document.addEventListener('DOMContentLoaded', () => {
 
     const observer = new IntersectionObserver((entries) => {
         entries.forEach(entry => {
-            const reelId = entry.target.dataset.reelId;
-            const video = entry.target.querySelector('video');
-            if (!video) return;
+            const container = entry.target;
+            const reelId = container.dataset.reelId;
             if (entry.isIntersecting) {
-                video.play().catch(() => {});
+                playReel(container);
                 if (reelId) recordReelView(reelId);
-            } else {
-                video.pause();
+            } else if (activeReelEl === container) {
+                getVideo(container)?.pause();
+                activeReelEl = null;
             }
         });
-    }, { threshold: 0.6 });
+    }, { threshold: 0.65 });
 
-    document.querySelectorAll('[data-reel-id]').forEach(el => observer.observe(el));
+    document.querySelectorAll('[data-reel-id]').forEach(el => {
+        updateSoundUi(el);
+        observer.observe(el);
+    });
 });
 </script>
 @endsection

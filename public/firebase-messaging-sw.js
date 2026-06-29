@@ -45,15 +45,19 @@ if (self.firebaseConfig?.apiKey) {
 
     messaging.onBackgroundMessage((payload) => {
         const title = payload.notification?.title || 'NEWBOOK';
-        const options = {
-            body: payload.notification?.body || '',
-                icon: '/icons/icon-192.png',
-            data: {
-                url: payload.data?.url || payload.fcmOptions?.link || '/',
-            },
-        };
+        const body = payload.notification?.body || '';
+        const url = payload.data?.url || payload.fcmOptions?.link || '/notifications';
 
-        self.registration.showNotification(title, options);
+        return self.registration.showNotification(title, {
+            body,
+            icon: '/icons/icon-192.png',
+            badge: '/icons/icon-192.png',
+            vibrate: [150, 80, 150, 80, 150],
+            silent: false,
+            renotify: true,
+            tag: payload.data?.type ? `newbook-${payload.data.type}` : 'newbook-push',
+            data: { url },
+        });
     });
 }
 

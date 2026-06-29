@@ -49,10 +49,13 @@ class FirebasePushService
                 'Content-Type' => 'application/json',
             ])->post('https://fcm.googleapis.com/fcm/send', [
                 'to' => $token,
+                'priority' => 'high',
                 'notification' => [
                     'title' => $notification->title,
                     'body' => $notification->message,
                     'icon' => asset('icons/icon-192.png'),
+                    'sound' => 'default',
+                    'click_action' => $notification->url ?? config('app.url'),
                 ],
                 'data' => [
                     'url' => $notification->url ?? '',
@@ -100,7 +103,23 @@ class FirebasePushService
                             'type' => $notification->type,
                             'reference_id' => (string) ($notification->reference_id ?? ''),
                         ],
+                        'android' => [
+                            'priority' => 'HIGH',
+                            'notification' => [
+                                'sound' => 'default',
+                                'channel_id' => 'newbook_alerts',
+                            ],
+                        ],
                         'webpush' => [
+                            'headers' => [
+                                'Urgency' => 'high',
+                            ],
+                            'notification' => [
+                                'title' => $notification->title,
+                                'body' => $notification->message,
+                                'icon' => asset('icons/icon-192.png'),
+                                'requireInteraction' => false,
+                            ],
                             'fcm_options' => [
                                 'link' => $notification->url ?? config('app.url'),
                             ],

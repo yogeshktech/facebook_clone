@@ -3,43 +3,113 @@
 @section('title', 'Friends')
 
 @section('content')
-<div class="max-w-4xl mx-auto p-4 space-y-6">
+<div class="max-w-2xl mx-auto p-4 space-y-4">
     @if($pendingRequests->count())
-    <div class="bg-white rounded-lg shadow p-6">
-        <h2 class="text-xl font-bold mb-4">Friend Requests ({{ $pendingRequests->count() }})</h2>
-        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-            @foreach($pendingRequests as $request)
-            <div class="flex items-center gap-3 p-3 border rounded-lg">
-                <img src="{{ $request->user->avatar_url }}" alt="" class="w-12 h-12 rounded-full object-cover">
-                <div class="flex-1">
-                    <a href="{{ route('profile.show', $request->user) }}" class="font-semibold hover:underline">{{ $request->user->name }}</a>
-                </div>
-                <form action="{{ route('friends.accept', $request) }}" method="POST">@csrf<button class="btn-primary text-sm px-3 py-1">Accept</button></form>
-                <form action="{{ route('friends.reject', $request) }}" method="POST">@csrf<button class="btn-secondary text-sm px-3 py-1">Reject</button></form>
-            </div>
-            @endforeach
+    <div class="bg-white rounded-lg shadow overflow-hidden">
+        <div class="px-4 py-3 border-b border-gray-100">
+            <h2 class="text-lg font-bold text-gray-900">Friend Requests</h2>
+            <p class="text-xs text-gray-500 mt-0.5">{{ $pendingRequests->count() }} pending</p>
         </div>
+        <ul class="divide-y divide-gray-100">
+            @foreach($pendingRequests as $request)
+            <li class="flex items-center gap-3 px-4 py-3 hover:bg-gray-50 transition">
+                <a href="{{ route('profile.show', $request->user) }}" class="flex-shrink-0">
+                    <img src="{{ $request->user->avatar_url }}" alt="" class="w-12 h-12 rounded-full object-cover">
+                </a>
+                <div class="flex-1 min-w-0">
+                    <a href="{{ route('profile.show', $request->user) }}" class="font-semibold text-gray-900 hover:underline block truncate">
+                        {{ $request->user->name }}
+                    </a>
+                    <p class="text-xs text-gray-500">Wants to be your friend</p>
+                </div>
+                <div class="flex items-center gap-2 flex-shrink-0">
+                    <form action="{{ route('friends.accept', $request) }}" method="POST">
+                        @csrf
+                        <button type="submit" class="bg-fb-blue text-white text-sm font-semibold px-4 py-1.5 rounded-lg hover:bg-fb-blue-dark whitespace-nowrap">
+                            Confirm
+                        </button>
+                    </form>
+                    <form action="{{ route('friends.reject', $request) }}" method="POST">
+                        @csrf
+                        <button type="submit" class="bg-fb-gray text-gray-800 text-sm font-semibold px-4 py-1.5 rounded-lg hover:bg-gray-200 whitespace-nowrap">
+                            Delete
+                        </button>
+                    </form>
+                </div>
+            </li>
+            @endforeach
+        </ul>
     </div>
     @endif
 
-    <div class="bg-white rounded-lg shadow p-6">
-        <h2 class="text-xl font-bold mb-4">Your Friends ({{ $friends->count() }})</h2>
-        <div class="grid grid-cols-2 md:grid-cols-3 gap-4">
-            @forelse($friends as $friend)
-            <div class="text-center p-4 border rounded-lg hover:shadow transition">
-                <a href="{{ route('profile.show', $friend) }}">
-                    <img src="{{ $friend->avatar_url }}" alt="" class="w-20 h-20 rounded-full object-cover mx-auto mb-2">
-                    <p class="font-semibold">{{ $friend->name }}</p>
-                </a>
-                <form action="{{ route('chat.start', $friend) }}" method="POST" class="mt-3">
-                    @csrf
-                    <button type="submit" class="btn-primary text-sm w-full">Message</button>
-                </form>
-            </div>
-            @empty
-            <p class="text-gray-500 col-span-full text-center py-8">No friends yet. Search for people to connect!</p>
-            @endforelse
+    @if($sentRequests->count())
+    <div class="bg-white rounded-lg shadow overflow-hidden">
+        <div class="px-4 py-3 border-b border-gray-100">
+            <h2 class="text-lg font-bold text-gray-900">Sent Requests</h2>
+            <p class="text-xs text-gray-500 mt-0.5">{{ $sentRequests->count() }} waiting for response</p>
         </div>
+        <ul class="divide-y divide-gray-100">
+            @foreach($sentRequests as $request)
+            <li class="flex items-center gap-3 px-4 py-3 hover:bg-gray-50 transition">
+                <a href="{{ route('profile.show', $request->friend) }}" class="flex-shrink-0">
+                    <img src="{{ $request->friend->avatar_url }}" alt="" class="w-12 h-12 rounded-full object-cover">
+                </a>
+                <div class="flex-1 min-w-0">
+                    <a href="{{ route('profile.show', $request->friend) }}" class="font-semibold text-gray-900 hover:underline block truncate">
+                        {{ $request->friend->name }}
+                    </a>
+                    <p class="text-xs text-amber-600 font-medium">Pending</p>
+                </div>
+                <form action="{{ route('friends.cancel', $request) }}" method="POST" class="flex-shrink-0">
+                    @csrf
+                    <button type="submit" class="bg-fb-gray text-gray-800 text-sm font-semibold px-4 py-1.5 rounded-lg hover:bg-gray-200 whitespace-nowrap">
+                        Cancel
+                    </button>
+                </form>
+            </li>
+            @endforeach
+        </ul>
+    </div>
+    @endif
+
+    <div class="bg-white rounded-lg shadow overflow-hidden">
+        <div class="px-4 py-3 border-b border-gray-100">
+            <h2 class="text-lg font-bold text-gray-900">Your Friends</h2>
+            <p class="text-xs text-gray-500 mt-0.5">{{ $friends->count() }} friends</p>
+        </div>
+        <ul class="divide-y divide-gray-100">
+            @forelse($friends as $friend)
+            <li class="flex items-center gap-3 px-4 py-3 hover:bg-gray-50 transition">
+                <a href="{{ route('profile.show', $friend) }}" class="flex-shrink-0">
+                    <img src="{{ $friend->avatar_url }}" alt="" class="w-12 h-12 rounded-full object-cover">
+                </a>
+                <div class="flex-1 min-w-0">
+                    <a href="{{ route('profile.show', $friend) }}" class="font-semibold text-gray-900 hover:underline block truncate">
+                        {{ $friend->name }}
+                    </a>
+                </div>
+                <div class="flex items-center gap-2 flex-shrink-0">
+                    <form action="{{ route('chat.start', $friend) }}" method="POST">
+                        @csrf
+                        <button type="submit" class="bg-fb-blue text-white text-sm font-semibold px-4 py-1.5 rounded-lg hover:bg-fb-blue-dark whitespace-nowrap">
+                            Message
+                        </button>
+                    </form>
+                    <form action="{{ route('friends.unfriend', $friend) }}" method="POST"
+                        onsubmit="return confirm('Remove {{ $friend->name }} from friends?')">
+                        @csrf @method('DELETE')
+                        <button type="submit" class="bg-fb-gray text-gray-800 text-sm font-semibold px-3 py-1.5 rounded-lg hover:bg-gray-200 whitespace-nowrap">
+                            Unfriend
+                        </button>
+                    </form>
+                </div>
+            </li>
+            @empty
+            <li class="px-4 py-10 text-center text-gray-500 text-sm">
+                No friends yet. Search for people to connect!
+            </li>
+            @endforelse
+        </ul>
     </div>
 </div>
 @endsection

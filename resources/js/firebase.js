@@ -42,8 +42,10 @@ export async function registerFirebaseMessaging(messaging, vapidKey) {
     }
 
     if ('serviceWorker' in navigator) {
+        const swPath = window.firebaseConfig?.apiKey ? '/sw.js' : '/sw.js';
         const existing = await navigator.serviceWorker.getRegistration('/');
-        const registration = existing || await navigator.serviceWorker.register('/sw.js');
+        const registration = existing || await navigator.serviceWorker.register(swPath, { scope: '/' });
+        await navigator.serviceWorker.ready;
         return getToken(messaging, {
             vapidKey,
             serviceWorkerRegistration: registration,

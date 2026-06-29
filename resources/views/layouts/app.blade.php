@@ -59,6 +59,26 @@
 
     @auth
         <div id="notification-toast" class="hidden fixed bottom-20 md:bottom-4 right-4 z-50 bg-white rounded-lg shadow-xl p-4 max-w-sm border-l-4 border-fb-blue"></div>
+
+        <div id="notification-permission-banner" class="hidden fixed bottom-20 md:bottom-4 left-3 right-3 md:left-auto md:right-4 md:max-w-sm z-[55] bg-white rounded-xl shadow-2xl border border-gray-200 p-4">
+            <div class="flex gap-3">
+                <img src="{{ asset('icons/icon-192.png') }}" alt="" class="w-12 h-12 rounded-xl flex-shrink-0">
+                <div class="flex-1 min-w-0">
+                    <p class="font-bold text-sm text-gray-900">Turn on notifications</p>
+                    <p class="text-xs text-gray-500 mt-0.5">Get message & friend request alerts with sound — like WhatsApp.</p>
+                    <div class="flex gap-2 mt-3">
+                        <button type="button" onclick="enablePushNotifications()"
+                            class="flex-1 bg-fb-blue text-white text-xs font-semibold py-2 rounded-lg hover:bg-fb-blue-dark">
+                            Allow
+                        </button>
+                        <button type="button" onclick="document.getElementById('notification-permission-banner').classList.add('hidden')"
+                            class="px-3 text-xs font-medium text-gray-500 hover:text-gray-800">
+                            Later
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
     @endauth
 </body>
 </html>
