@@ -16,6 +16,7 @@ class ProfileController extends Controller
         $authUser = auth()->user();
         $posts = Post::with(['user', 'likes', 'comments.user', 'comments.replies.user'])
             ->where('user_id', $user->id)
+            ->where('type', '!=', 'reel')
             ->whereNull('group_id')
             ->whereNull('page_id')
             ->latest()

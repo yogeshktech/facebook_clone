@@ -15,6 +15,7 @@ use App\Http\Controllers\NotificationController;
 use App\Http\Controllers\PageController;
 use App\Http\Controllers\PostController;
 use App\Http\Controllers\ProfileController;
+use App\Http\Controllers\ReelController;
 use App\Http\Controllers\SearchController;
 use App\Http\Controllers\StoryController;
 use Illuminate\Support\Facades\Route;
@@ -75,6 +76,7 @@ Route::middleware('auth')->group(function () {
     Route::post('/posts', [PostController::class, 'store'])->name('posts.store');
     Route::delete('/posts/{post}', [PostController::class, 'destroy'])->name('posts.destroy');
     Route::post('/posts/{post}/like', [PostController::class, 'like'])->name('posts.like');
+    Route::get('/posts/{post}/likers', [PostController::class, 'likers'])->name('posts.likers');
     Route::post('/posts/{post}/comment', [PostController::class, 'comment'])->name('posts.comment');
     Route::post('/posts/{post}/share', [PostController::class, 'share'])->name('posts.share');
     Route::post('/posts/{post}/send/{user}', [PostController::class, 'sendToFriend'])->name('posts.send');
@@ -94,7 +96,15 @@ Route::middleware('auth')->group(function () {
     Route::get('/stories', [StoryController::class, 'index'])->name('stories.index');
     Route::post('/stories', [StoryController::class, 'store'])->name('stories.store');
     Route::get('/stories/{story}/viewers', [StoryController::class, 'viewers'])->name('stories.viewers');
+    Route::delete('/stories/{story}', [StoryController::class, 'destroy'])->name('stories.destroy');
     Route::get('/stories/{story}', [StoryController::class, 'show'])->name('stories.show');
+
+    // Reels
+    Route::get('/reels', [ReelController::class, 'index'])->name('reels.index');
+    Route::post('/reels', [ReelController::class, 'store'])->name('reels.store');
+    Route::post('/reels/{reel}/like', [ReelController::class, 'like'])->name('reels.like');
+    Route::post('/reels/{reel}/comment', [ReelController::class, 'comment'])->name('reels.comment');
+    Route::post('/reels/{reel}/share', [ReelController::class, 'share'])->name('reels.share');
 
     // Chat
     Route::get('/chat', [ChatController::class, 'index'])->name('chat.index');

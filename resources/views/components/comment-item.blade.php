@@ -16,7 +16,7 @@
       </div>
 
       <form action="{{ route('posts.comment', $post) }}" method="POST"
-        class="mt-2 flex gap-2 hidden" id="reply-form-{{ $comment->id }}">
+        class="mt-2 flex gap-2 hidden comment-form" id="reply-form-{{ $comment->id }}">
         @csrf
         <input type="hidden" name="parent_id" value="{{ $comment->id }}">
         <img src="{{ auth()->user()->avatar_url }}" alt="" class="w-7 h-7 rounded-full object-cover flex-shrink-0">
@@ -27,7 +27,7 @@
     </div>
   </div>
 
-  @if($comment->relationLoaded('replies') && $comment->replies->count())
+  @if(!$comment->parent_id && $comment->relationLoaded('replies') && $comment->replies->count())
     @foreach($comment->replies as $reply)
       @include('components.comment-item', ['comment' => $reply, 'post' => $post])
     @endforeach

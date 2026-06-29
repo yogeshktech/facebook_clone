@@ -40,6 +40,14 @@
         @endif
 
         @if($isOwner)
+        <div class="absolute top-6 right-4 z-10 flex items-center gap-2">
+            <form action="{{ route('stories.destroy', $story) }}" method="POST" onsubmit="return confirm('Delete this story?')">
+                @csrf @method('DELETE')
+                <button type="submit" class="text-white bg-red-600/80 hover:bg-red-600 rounded-full w-10 h-10 flex items-center justify-center" title="Delete story">
+                    <svg class="w-5 h-5" fill="currentColor" viewBox="0 0 24 24"><path d="M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z"/></svg>
+                </button>
+            </form>
+        </div>
         <div class="absolute bottom-4 left-4 right-4 z-10">
             <button type="button" onclick="document.getElementById('viewers-panel').classList.toggle('hidden')"
                 class="w-full bg-white/20 backdrop-blur text-white rounded-full py-2 px-4 text-sm font-semibold hover:bg-white/30 transition flex items-center justify-center gap-2">

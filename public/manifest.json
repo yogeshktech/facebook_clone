@@ -1,0 +1,18 @@
+{
+    "name": "Newbook",
+    "short_name": "Newbook",
+    "description": "Connect with friends and share moments on Newbook",
+    "start_url": "/feed",
+    "display": "standalone",
+    "background_color": "#F0F2F5",
+    "theme_color": "#6366F1",
+    "orientation": "portrait-primary",
+    "icons": [
+        {
+            "src": "/favicon.svg",
+            "sizes": "any",
+            "type": "image/svg+xml",
+            "purpose": "any"
+        }
+    ]
+}

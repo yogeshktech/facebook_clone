@@ -27,7 +27,13 @@
 
   {{-- Stats --}}
   <div class="flex items-center justify-between text-sm text-gray-500 py-2 border-b border-gray-100">
-    <span>{{ $post->likes_count }} likes</span>
+    @if($post->likes_count > 0)
+      <button type="button" onclick="openLikersModal({{ $post->id }})" class="hover:underline cursor-pointer text-left">
+        {{ $post->likes_count }} {{ $post->likes_count === 1 ? 'like' : 'likes' }}
+      </button>
+    @else
+      <span>0 likes</span>
+    @endif
     <span>{{ $post->comments_count }} comments · {{ $post->shares_count }} shares</span>
   </div>
 
@@ -87,6 +93,20 @@
     </div>
   </div>
 
+  {{-- Likers modal --}}
+  <div id="likers-modal-{{ $post->id }}" class="hidden fixed inset-0 z-50 flex items-center justify-center p-4" role="dialog">
+    <div class="absolute inset-0 bg-black/50" onclick="closeLikersModal({{ $post->id }})"></div>
+    <div class="relative bg-white rounded-xl shadow-2xl w-full max-w-md max-h-[70vh] flex flex-col z-10">
+      <div class="flex items-center justify-between p-4 border-b">
+        <h3 class="text-lg font-bold">Liked by</h3>
+        <button type="button" onclick="closeLikersModal({{ $post->id }})" class="text-gray-500 hover:text-gray-800 text-2xl leading-none">&times;</button>
+      </div>
+      <div id="likers-list-{{ $post->id }}" class="p-2 overflow-y-auto flex-1">
+        <p class="text-center text-gray-500 py-4 text-sm">Loading...</p>
+      </div>
+    </div>
+  </div>
+
   {{-- Comments --}}
   @if($post->comments->count())
     <div class="mt-3 space-y-3">
@@ -96,7 +116,7 @@
     </div>
   @endif
 
-  <form action="{{ route('posts.comment', $post) }}" method="POST" class="mt-3 flex gap-2 hidden" id="comment-form-{{ $post->id }}">
+  <form action="{{ route('posts.comment', $post) }}" method="POST" class="mt-3 flex gap-2 hidden comment-form" id="comment-form-{{ $post->id }}">
     @csrf
     <img src="{{ auth()->user()->avatar_url }}" alt="" class="w-8 h-8 rounded-full object-cover">
     <input type="text" name="content" placeholder="Write a comment..." required

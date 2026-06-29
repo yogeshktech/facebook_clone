@@ -26,6 +26,7 @@ class FeedController extends Controller
         $posts = Post::with(['user', 'sharedPost.user', 'comments.user', 'comments.replies.user'])
             ->withCount(['likes', 'comments'])
             ->whereIn('user_id', $feedUserIds)
+            ->where('type', '!=', 'reel')
             ->whereNull('group_id')
             ->whereNull('page_id')
             ->latest()

@@ -93,6 +93,21 @@ class PostController extends Controller
         return back()->with('success', 'Post deleted.');
     }
 
+    public function likers(Post $post): JsonResponse
+    {
+        $likers = $post->likes()
+            ->with('user')
+            ->latest()
+            ->get()
+            ->map(fn (Like $like) => [
+                'id' => $like->user->id,
+                'name' => $like->user->name,
+                'avatar_url' => $like->user->avatar_url,
+            ]);
+
+        return response()->json(['likers' => $likers]);
+    }
+
     public function like(Post $post): RedirectResponse
     {
         $existing = Like::where('user_id', auth()->id())

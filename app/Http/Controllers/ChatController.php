@@ -54,7 +54,7 @@ class ChatController extends Controller
                 'media_url' => $m->media_url,
                 'media_type' => $m->media_type,
                 'user_id' => $m->user_id,
-                'time' => $m->created_at->format('H:i'),
+                'time' => $m->created_at->timezone(config('app.timezone'))->format('g:i A'),
                 'is_sender' => $m->user_id === auth()->id(),
             ];
         })->values();
@@ -99,7 +99,7 @@ class ChatController extends Controller
                 'media_type' => $m->media_type,
                 'user_id' => $m->user_id,
                 'user_name' => $m->user->name,
-                'time' => $m->created_at->format('H:i'),
+                'time' => $m->created_at->timezone(config('app.timezone'))->format('g:i A'),
                 'is_sender' => $m->user_id === auth()->id(),
             ]),
         ]);
@@ -163,6 +163,7 @@ class ChatController extends Controller
                     'media_url' => $message->media_url,
                     'media_type' => $message->media_type,
                     'user_id' => $message->user_id,
+                    'time' => $message->created_at->timezone(config('app.timezone'))->format('g:i A'),
                 ],
             ]);
         }

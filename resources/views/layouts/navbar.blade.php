@@ -30,10 +30,16 @@
             <a href="{{ route('chat.index') }}" class="nav-icon {{ request()->routeIs('chat.*') ? 'active' : '' }}" title="Messenger">
                 <svg class="w-6 h-6" fill="currentColor" viewBox="0 0 24 24"><path d="M20 2H4c-1.1 0-2 .9-2 2v18l4-4h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2z"/></svg>
             </a>
+            <a href="{{ route('reels.index') }}" class="nav-icon {{ request()->routeIs('reels.*') ? 'active' : '' }}" title="Reels">
+                <svg class="w-6 h-6" fill="currentColor" viewBox="0 0 24 24"><path d="M18 4l2 4h-3l-2-4h-2l2 4h-3l-2-4H8l2 4H7L5 4H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V4h-4z"/></svg>
+            </a>
         </div>
 
         {{-- Right side --}}
         <div class="flex items-center gap-1 sm:gap-2 flex-shrink-0">
+            <button type="button" onclick="openMobileMenu()" class="md:hidden nav-icon flex-shrink-0" title="Menu" aria-label="Open menu">
+                <svg class="w-6 h-6" fill="currentColor" viewBox="0 0 24 24"><path d="M3 18h18v-2H3v2zm0-5h18v-2H3v2zm0-7v2h18V6H3z"/></svg>
+            </button>
             @include('layouts.notification-bell')
             <a href="{{ route('profile.show', auth()->user()) }}" class="flex items-center gap-2 hover:bg-fb-gray rounded-full p-1 pr-2 sm:pr-3">
                 <img src="{{ auth()->user()->avatar_url }}" alt="" class="w-8 h-8 rounded-full object-cover">

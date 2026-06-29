@@ -101,6 +101,16 @@ class StoryController extends Controller
         ));
     }
 
+    public function destroy(Story $story): RedirectResponse
+    {
+        abort_unless($story->user_id === auth()->id(), 403);
+
+        MediaStorage::delete($story->media_path);
+        $story->delete();
+
+        return redirect()->route('feed.index')->with('success', 'Story deleted.');
+    }
+
     public function viewers(Story $story): JsonResponse|View
     {
         abort_unless($story->user_id === auth()->id(), 403);

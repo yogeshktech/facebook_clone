@@ -112,8 +112,9 @@
                 media_url: msg.media_url,
                 media_type: msg.media_type,
                 user_id: msg.user_id,
-                time: new Date().toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' }),
+                time: msg.time || '',
             });
+            lastMessageId = Math.max(lastMessageId, msg.id);
             scrollToBottom();
         } catch (e) {
             alert('Network error. Please try again.');
