@@ -20,6 +20,9 @@ return Application::configure(basePath: dirname(__DIR__))
             'admin' => \App\Http\Middleware\EnsureAdmin::class,
             'client' => \App\Http\Middleware\EnsureClient::class,
         ]);
+        $middleware->web(append: [
+            \App\Http\Middleware\TrackLastSeen::class,
+        ]);
     })
     ->withExceptions(function (Exceptions $exceptions): void {
         $exceptions->render(function (\Illuminate\Http\Exceptions\PostTooLargeException $e, $request) {

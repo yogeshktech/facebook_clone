@@ -9,8 +9,15 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 class Message extends Model
 {
     protected $fillable = [
-        'conversation_id', 'user_id', 'body', 'media_path', 'media_type',
+        'conversation_id', 'user_id', 'body', 'media_path', 'media_type', 'delivered_at',
     ];
+
+    protected function casts(): array
+    {
+        return [
+            'delivered_at' => 'datetime',
+        ];
+    }
 
     protected $appends = ['media_url', 'is_sender'];
 

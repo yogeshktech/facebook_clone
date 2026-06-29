@@ -3,6 +3,33 @@ import './echo';
 const csrfToken = () => document.querySelector('meta[name="csrf-token"]')?.content;
 
 const NOTIFICATION_ICON = '/icons/icon-192.png';
+const NOTIFIED_IDS_KEY = 'newbook_notified_ids';
+
+function loadNotifiedIds() {
+    try {
+        const raw = localStorage.getItem(NOTIFIED_IDS_KEY);
+        return new Set(raw ? JSON.parse(raw) : []);
+    } catch {
+        return new Set();
+    }
+}
+
+function saveNotifiedIds(ids) {
+    const arr = [...ids].slice(-200);
+    localStorage.setItem(NOTIFIED_IDS_KEY, JSON.stringify(arr));
+}
+
+function markNotified(id) {
+    if (!id) return;
+    const ids = loadNotifiedIds();
+    ids.add(id);
+    saveNotifiedIds(ids);
+}
+
+function getUnnotified(notifications) {
+    const notified = loadNotifiedIds();
+    return (notifications || []).filter((n) => n.id && !notified.has(n.id));
+}
 
 export function updateNotificationBadges(count) {
     const label = count > 9 ? '9+' : String(count);
@@ -85,6 +112,10 @@ export async function alertUser(notification) {
     const url = notification.url || '/notifications';
     const tag = notification.id ? `newbook-${notification.id}` : `newbook-${Date.now()}`;
 
+    if (notification.id) {
+        markNotified(notification.id);
+    }
+
     showNotificationToast(notification);
     playNotificationSound();
 
@@ -144,25 +175,34 @@ export async function loadNotifications() {
     }
 }
 
-export async function refreshNotificationUI({ showToastOnNew = false, previousCount = 0 } = {}) {
+export async function refreshNotificationUI({ bootstrap = false } = {}) {
     const data = await loadNotifications();
-    if (!data) return previousCount;
+    if (!data) return 0;
 
     const count = data.count || 0;
+    const notifications = data.notifications || [];
     updateNotificationBadges(count);
 
     const listEl = document.getElementById('notification-dropdown-list');
     if (listEl) {
-        if (data.notifications?.length) {
-            listEl.innerHTML = data.notifications.map(renderNotificationDropdownItem).join('');
+        if (notifications.length) {
+            listEl.innerHTML = notifications.map(renderNotificationDropdownItem).join('');
             bindDropdownItemClicks(listEl);
         } else {
             listEl.innerHTML = '<p class="p-4 text-center text-sm text-gray-500">No new notifications</p>';
         }
     }
 
-    if (showToastOnNew && count > previousCount && data.notifications?.length) {
-        await alertUser(data.notifications[0]);
+    if (bootstrap) {
+        const ids = loadNotifiedIds();
+        notifications.forEach((n) => n.id && ids.add(n.id));
+        saveNotifiedIds(ids);
+        return count;
+    }
+
+    const fresh = getUnnotified(notifications);
+    if (fresh.length) {
+        await alertUser(fresh[0]);
     }
 
     return count;
@@ -218,10 +258,8 @@ export function initNotificationBell() {
     const dropdown = document.getElementById('notification-dropdown');
     if (!bellWrap) return;
 
-    let lastCount = 0;
-
-    const refresh = async (showAlert = false) => {
-        lastCount = await refreshNotificationUI({ showToastOnNew: showAlert, previousCount: lastCount });
+    const refresh = async (bootstrap = false) => {
+        await refreshNotificationUI({ bootstrap });
     };
 
     bellWrap.querySelector('button')?.addEventListener('click', (e) => {
@@ -248,14 +286,18 @@ export function initNotificationBell() {
         await refresh(false);
     });
 
-    refresh(false);
+    refresh(true);
 
-    setInterval(() => refresh(true), 8000);
+    setInterval(() => refresh(false), 8000);
 
     if (window.Echo && window.authUserId) {
         try {
             window.Echo.private(`notification.${window.authUserId}`)
                 .listen('.NotificationEvent', async (payload) => {
+                    if (payload?.id && loadNotifiedIds().has(payload.id)) {
+                        await refresh(false);
+                        return;
+                    }
                     await alertUser(payload || {});
                     await refresh(false);
                 });
@@ -295,12 +337,16 @@ async function initFirebasePush() {
         }
 
         onMessage(firebase.messaging, async (payload) => {
-            await alertUser({
+            const notification = {
+                id: payload.data?.notification_id ? parseInt(payload.data.notification_id, 10) : null,
                 title: payload.notification?.title,
                 message: payload.notification?.body,
                 url: payload.data?.url,
-            });
-            await refreshNotificationUI({ showToastOnNew: false });
+            };
+            if (!notification.id || !loadNotifiedIds().has(notification.id)) {
+                await alertUser(notification);
+            }
+            await refreshNotificationUI({ bootstrap: false });
         });
     } catch (e) {
         console.warn('Firebase push not available:', e);

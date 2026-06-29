@@ -34,7 +34,9 @@ class ReelController extends Controller
             ->latest()
             ->paginate(10);
 
-        return view('reels.index', compact('reels'));
+        $friends = User::whereIn('id', $friendIds)->orderBy('name')->get();
+
+        return view('reels.index', compact('reels', 'friends'));
     }
 
     public function store(Request $request): RedirectResponse

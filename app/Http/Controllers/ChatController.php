@@ -38,6 +38,8 @@ class ChatController extends Controller
             403
         );
 
+        $conversation->load(['users' => fn ($q) => $q->withPivot('last_read_at')]);
+
         $messages = $conversation->messages()
             ->with('user')
             ->latest('created_at')
@@ -46,19 +48,11 @@ class ChatController extends Controller
             ->sortBy('created_at')
             ->values();
 
-        $conversation->users()->updateExistingPivot(auth()->id(), ['last_read_at' => now()]);
+        $this->markIncomingDeliveredAndRead($conversation);
 
-        $initialMessages = $messages->map(function ($m) {
-            return [
-                'id' => $m->id,
-                'body' => $m->body,
-                'media_url' => $m->media_url,
-                'media_type' => $m->media_type,
-                'user_id' => $m->user_id,
-                'time' => $m->created_at->timezone(config('app.timezone'))->format('g:i A'),
-                'is_sender' => $m->user_id === auth()->id(),
-            ];
-        })->values();
+        $initialMessages = $messages
+            ->map(fn ($m) => $this->messagePayload($m, $conversation))
+            ->values();
 
         return view('chat.show', compact('conversation', 'messages', 'initialMessages'));
     }
@@ -84,6 +78,10 @@ class ChatController extends Controller
             403
         );
 
+        $conversation->load(['users' => fn ($q) => $q->withPivot('last_read_at')]);
+        $this->markIncomingDeliveredAndRead($conversation);
+        $conversation->load(['users' => fn ($q) => $q->withPivot('last_read_at')]);
+
         $query = $conversation->messages()->with('user')->latest('created_at');
 
         if ($request->filled('after_id')) {
@@ -92,17 +90,14 @@ class ChatController extends Controller
 
         $messages = $query->limit(50)->get()->sortBy('created_at')->values();
 
+        $statuses = $conversation->messages()
+            ->where('user_id', auth()->id())
+            ->get()
+            ->mapWithKeys(fn ($m) => [$m->id => $this->deliveryStatus($m, $conversation)]);
+
         return response()->json([
-            'messages' => $messages->map(fn ($m) => [
-                'id' => $m->id,
-                'body' => $m->body,
-                'media_url' => $m->media_url,
-                'media_type' => $m->media_type,
-                'user_id' => $m->user_id,
-                'user_name' => $m->user->name,
-                'time' => $m->created_at->timezone(config('app.timezone'))->format('g:i A'),
-                'is_sender' => $m->user_id === auth()->id(),
-            ]),
+            'messages' => $messages->map(fn ($m) => $this->messagePayload($m, $conversation)),
+            'statuses' => $statuses,
         ]);
     }
 
@@ -158,16 +153,10 @@ class ChatController extends Controller
 
         if ($request->expectsJson()) {
             $message->refresh();
+            $conversation->load(['users' => fn ($q) => $q->withPivot('last_read_at')]);
 
             return response()->json([
-                'message' => [
-                    'id' => $message->id,
-                    'body' => $message->body,
-                    'media_url' => $message->media_url,
-                    'media_type' => $message->media_type,
-                    'user_id' => $message->user_id,
-                    'time' => $message->created_at->timezone(config('app.timezone'))->format('g:i A'),
-                ],
+                'message' => $this->messagePayload($message, $conversation),
             ]);
         }
 
@@ -180,5 +169,62 @@ class ChatController extends Controller
         $received = $user->receivedFriendRequests()->where('status', 'accepted')->pluck('user_id');
 
         return $sent->merge($received)->unique()->toArray();
+    }
+
+    private function messagePayload(Message $message, Conversation $conversation): array
+    {
+        $payload = [
+            'id' => $message->id,
+            'body' => $message->body,
+            'media_url' => $message->media_url,
+            'media_type' => $message->media_type,
+            'user_id' => $message->user_id,
+            'user_name' => $message->user?->name,
+            'time' => $message->created_at->timezone(config('app.timezone'))->format('g:i A'),
+            'is_sender' => $message->user_id === auth()->id(),
+            'status' => null,
+        ];
+
+        if ($message->user_id === auth()->id()) {
+            $payload['status'] = $this->deliveryStatus($message, $conversation);
+        }
+
+        return $payload;
+    }
+
+    private function deliveryStatus(Message $message, Conversation $conversation): string
+    {
+        $other = $conversation->users->where('id', '!=', auth()->id())->first();
+
+        if (! $other) {
+            return 'sent';
+        }
+
+        $lastRead = $other->pivot?->last_read_at;
+
+        if ($lastRead && $lastRead >= $message->created_at) {
+            return 'read';
+        }
+
+        if ($message->delivered_at || $this->isUserOnline($other)) {
+            return 'delivered';
+        }
+
+        return 'sent';
+    }
+
+    private function isUserOnline(User $user): bool
+    {
+        return $user->last_seen_at && $user->last_seen_at->gte(now()->subMinutes(5));
+    }
+
+    private function markIncomingDeliveredAndRead(Conversation $conversation): void
+    {
+        Message::where('conversation_id', $conversation->id)
+            ->where('user_id', '!=', auth()->id())
+            ->whereNull('delivered_at')
+            ->update(['delivered_at' => now()]);
+
+        $conversation->users()->updateExistingPivot(auth()->id(), ['last_read_at' => now()]);
     }
 }

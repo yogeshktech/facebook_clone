@@ -53,7 +53,21 @@
             const mobileCountEl = document.getElementById('mobile-notification-count');
             const toastEl = document.getElementById('notification-toast');
             if (!countEl && !mobileCountEl) return;
-            let lastCount = 0;
+
+            const NOTIFIED_KEY = 'newbook_notified_ids';
+            const loadNotified = () => {
+                try {
+                    return new Set(JSON.parse(localStorage.getItem(NOTIFIED_KEY) || '[]'));
+                } catch (e) {
+                    return new Set();
+                }
+            };
+            const saveNotified = (ids) => {
+                localStorage.setItem(NOTIFIED_KEY, JSON.stringify([...ids].slice(-200)));
+            };
+            let notifiedIds = loadNotified();
+            let bootstrapped = false;
+
             const updateCount = (count) => {
                 const label = count > 9 ? '9+' : count;
                 [countEl, mobileCountEl].forEach(el => {
@@ -118,8 +132,21 @@
                     if (!res.ok) return;
                     const data = await res.json();
                     updateCount(data.count || 0);
-                    if (data.count > lastCount && data.notifications?.length && toastEl) {
-                        const latest = data.notifications[0];
+
+                    const notifications = data.notifications || [];
+
+                    if (!bootstrapped) {
+                        notifications.forEach((n) => n.id && notifiedIds.add(n.id));
+                        saveNotified(notifiedIds);
+                        bootstrapped = true;
+                        return;
+                    }
+
+                    const fresh = notifications.filter((n) => n.id && !notifiedIds.has(n.id));
+                    if (fresh.length && toastEl) {
+                        const latest = fresh[0];
+                        notifiedIds.add(latest.id);
+                        saveNotified(notifiedIds);
                         const title = latest.title || latest.message || 'NEWBOOK';
                         toastEl.innerHTML = '<p class="font-semibold text-sm">' + title + '</p><p class="text-xs text-gray-500">' + (latest.created_at_human || 'Just now') + '</p>';
                         toastEl.classList.remove('hidden');
@@ -127,7 +154,6 @@
                         playNotificationSound();
                         showSystemNotification(title, latest.message || '', latest.url || '/notifications');
                     }
-                    lastCount = data.count;
                 } catch (e) {}
             };
             poll();

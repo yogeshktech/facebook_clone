@@ -113,6 +113,7 @@
                 media_type: msg.media_type,
                 user_id: msg.user_id,
                 time: msg.time || '',
+                status: msg.status || 'sent',
             });
             lastMessageId = Math.max(lastMessageId, msg.id);
             scrollToBottom();
@@ -125,6 +126,30 @@
     }
 
     const initialMessages = @json($initialMessages);
+
+    function statusIcon(status) {
+        const color = status === 'read' ? 'text-sky-300' : 'text-white/80';
+        const check = `<svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>`;
+
+        if (status === 'sent') {
+            return `<span class="inline-flex ${color}" title="Sent">${check}</span>`;
+        }
+
+        const title = status === 'read' ? 'Seen' : 'Delivered';
+        return `<span class="inline-flex ${color} -space-x-1.5" title="${title}">${check}${check}</span>`;
+    }
+
+    function updateMessageStatus(messageId, status) {
+        const el = document.getElementById('msg-status-' + messageId);
+        if (el && status) {
+            el.innerHTML = statusIcon(status);
+        }
+    }
+
+    function updateAllStatuses(statuses) {
+        if (!statuses) return;
+        Object.entries(statuses).forEach(([id, status]) => updateMessageStatus(id, status));
+    }
 
     function renderMessage(msg) {
         if (document.getElementById('msg-' + msg.id)) return;
@@ -146,10 +171,17 @@
             ? 'bg-fb-blue text-white rounded-br-sm'
             : 'bg-fb-gray text-gray-900 rounded-bl-sm';
 
+        const statusHtml = isSender
+            ? `<span id="msg-status-${msg.id}">${statusIcon(msg.status || 'sent')}</span>`
+            : '';
+
         wrap.innerHTML = `
             <div class="max-w-xs lg:max-w-md px-3 py-2 rounded-2xl ${bubbleClass}">
                 ${mediaHtml}${bodyHtml}
-                <p class="text-xs opacity-70 mt-1 text-right">${msg.time}</p>
+                <p class="text-xs opacity-70 mt-1 flex items-center justify-end gap-1">
+                    <span>${msg.time}</span>
+                    ${statusHtml}
+                </p>
             </div>`;
 
         container.appendChild(wrap);
@@ -181,11 +213,13 @@
             const data = await res.json();
             const hadNew = data.messages.length > 0;
             data.messages.forEach(renderMessage);
+            updateAllStatuses(data.statuses);
             if (hadNew && isNearBottom) scrollToBottom();
         } catch (e) {}
     }
 
     setInterval(fetchNewMessages, 2000);
+    fetchNewMessages();
 
     form.addEventListener('submit', async function (e) {
         e.preventDefault();
