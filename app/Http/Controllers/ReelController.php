@@ -23,7 +23,7 @@ class ReelController extends Controller
         $feedUserIds = array_unique(array_merge([$user->id], $friendIds, $followingIds));
 
         $reels = Post::with(['user'])
-            ->withCount(['likes', 'allComments as comments_count'])
+            ->withCount(['likes', 'allComments as comments_count', 'reelViews as views_count'])
             ->where('type', 'reel')
             ->whereIn('user_id', $feedUserIds)
             ->whereNull('group_id')
@@ -37,7 +37,7 @@ class ReelController extends Controller
     public function store(Request $request): RedirectResponse
     {
         $validated = $request->validate([
-            'media' => ['required', 'file', 'mimes:mp4,webm,mov', 'max:51200'],
+            'media' => ['required', 'file', 'mimes:mp4,webm,mov', 'max:'.config('media.max_video_kb')],
             'content' => ['nullable', 'string', 'max:500'],
         ]);
 
@@ -136,6 +136,17 @@ class ReelController extends Controller
         }
 
         return back()->with('success', 'Reel shared to your timeline!');
+    }
+
+    public function view(Request $request, Post $reel): JsonResponse
+    {
+        abort_unless($reel->type === 'reel', 404);
+
+        $reel->recordReelView($request->user()->id);
+
+        return response()->json([
+            'views_count' => $reel->reelViews()->count(),
+        ]);
     }
 
     private function getFriendIds(User $user): array

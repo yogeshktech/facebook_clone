@@ -6,13 +6,13 @@
 <div class="max-w-4xl mx-auto">
     {{-- Cover & Profile --}}
     <div class="bg-white shadow">
-        <div class="h-48 md:h-64 bg-gradient-to-r from-fb-blue to-purple-600 relative">
+        {{-- <div class="h-48 md:h-64 bg-gradient-to-r from-fb-blue to-purple-600 relative">
             @if($user->cover_photo_url)
                 <img src="{{ $user->cover_photo_url }}" alt="" class="w-full h-full object-cover">
             @endif
-        </div>
+        </div> --}}
         <div class="px-4 pb-4">
-            <div class="flex flex-col md:flex-row md:items-end gap-4 -mt-16">
+            <div class="flex flex-col md:flex-row md:items-end gap-4 -mt-16" style="margin-top: 1px;">
                 <img src="{{ $user->avatar_url }}" alt="" class="w-32 h-32 rounded-full border-4 border-white object-cover shadow">
                 <div class="flex-1">
                     <h1 class="text-2xl font-bold">{{ $user->name }}</h1>

@@ -1,5 +1,5 @@
 const CACHE_NAME = 'newbook-v2';
-const PRECACHE_URLS = ['/', '/feed', '/manifest.json', '/icons/icon-192.png', '/icons/icon-512.png'];
+const PRECACHE_URLS = ['/', '/feed', '/manifest.json', '/icons/icon-192.png', '/icons/icon-512.png', '/images/newbook-logo.jpg'];
 
 self.addEventListener('install', (event) => {
     event.waitUntil(

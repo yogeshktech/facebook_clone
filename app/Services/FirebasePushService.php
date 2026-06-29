@@ -52,7 +52,7 @@ class FirebasePushService
                 'notification' => [
                     'title' => $notification->title,
                     'body' => $notification->message,
-                    'icon' => asset('favicon.svg'),
+                    'icon' => asset('icons/icon-192.png'),
                 ],
                 'data' => [
                     'url' => $notification->url ?? '',

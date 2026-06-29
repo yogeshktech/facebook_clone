@@ -6,7 +6,7 @@
 <div class="min-h-screen flex items-center justify-center bg-fb-gray py-12">
     <div class="max-w-md w-full mx-4">
         <div class="text-center mb-8">
-            <x-brand-logo size="md" :showName="true" class="justify-center mb-2" />
+            <x-brand-logo size="md" :showTagline="true" class="justify-center mb-2" />
             <p class="text-gray-600 mt-2">Create a new password for your account</p>
         </div>
 

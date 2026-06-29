@@ -1,7 +1,7 @@
 # Add inside your server { } block for newbook.workarya.com
 # REQUIRED — fixes "413 Request Entity Too Large" on story/video upload
-client_max_body_size 64M;
+client_max_body_size 128M;
 
 # PHP-FPM (inside location ~ \.php$ { })
-# fastcgi_read_timeout 300;
-# fastcgi_param PHP_VALUE "upload_max_filesize=64M \n post_max_size=70M \n max_execution_time=300";
+# fastcgi_read_timeout 600;
+# fastcgi_param PHP_VALUE "upload_max_filesize=100M \n post_max_size=110M \n max_execution_time=600";

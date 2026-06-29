@@ -6,7 +6,7 @@
 <div class="min-h-screen flex items-center justify-center bg-fb-gray py-12">
     <div class="max-w-md w-full mx-4">
         <div class="text-center mb-8">
-            <x-brand-logo size="md" class="justify-center mb-4" />
+            <x-brand-logo size="md" :showTagline="true" class="justify-center mb-4" />
             <h1 class="text-3xl font-bold text-fb-blue">Verify Email</h1>
             <p class="text-gray-600 mt-2">OTP sent to: <strong>{{ $email }}</strong></p>
         </div>

@@ -8,7 +8,7 @@ const CACHE_NAME = 'newbook-v1';
 self.addEventListener('install', (event) => {
     event.waitUntil(
         caches.open(CACHE_NAME).then((cache) =>
-            cache.addAll(['/', '/feed', '/manifest.json', '/favicon.svg'])
+            cache.addAll(['/', '/feed', '/manifest.json', '/icons/icon-192.png', '/icons/icon-512.png'])
         ).then(() => self.skipWaiting())
     );
 });
@@ -44,10 +44,10 @@ if (self.firebaseConfig?.apiKey) {
     const messaging = firebase.messaging();
 
     messaging.onBackgroundMessage((payload) => {
-        const title = payload.notification?.title || 'Newbook';
+        const title = payload.notification?.title || 'NEWBOOK';
         const options = {
             body: payload.notification?.body || '',
-            icon: '/favicon.svg',
+                icon: '/icons/icon-192.png',
             data: {
                 url: payload.data?.url || payload.fcmOptions?.link || '/',
             },

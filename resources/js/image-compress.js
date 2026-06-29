@@ -65,8 +65,9 @@ window.prepareMediaFile = async function (file) {
         return window.compressImageFile(file);
     }
 
-    if (file.size > 50 * 1024 * 1024) {
-        throw new Error('Video must be under 50MB.');
+    const maxVideoMb = window.maxVideoUploadMb ?? 100;
+    if (file.size > maxVideoMb * 1024 * 1024) {
+        throw new Error(`Video must be under ${maxVideoMb}MB.`);
     }
 
     return file;

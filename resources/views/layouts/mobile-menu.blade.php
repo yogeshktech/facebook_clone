@@ -2,7 +2,7 @@
 <div id="mobile-offcanvas-backdrop" class="fixed inset-0 bg-black/50 z-50 hidden md:hidden" onclick="closeMobileMenu()"></div>
 <aside id="mobile-offcanvas" class="fixed top-0 right-0 h-full w-1/2 min-w-[200px] max-w-xs bg-white z-50 shadow-2xl transform translate-x-full transition-transform duration-300 ease-in-out md:hidden flex flex-col">
     <div class="flex items-center justify-between p-4 border-b">
-        <span class="font-bold text-lg bg-gradient-to-r from-indigo-600 to-violet-600 bg-clip-text text-transparent">Menu</span>
+        <x-brand-logo size="xs" />
         <button type="button" onclick="closeMobileMenu()" class="text-gray-500 hover:text-gray-800 text-2xl leading-none" aria-label="Close menu">&times;</button>
     </div>
 

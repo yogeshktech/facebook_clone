@@ -2,10 +2,10 @@
 <div id="pwa-install-modal" class="hidden fixed inset-0 z-[60] flex items-end sm:items-center justify-center p-4" role="dialog" aria-modal="true" aria-labelledby="pwa-install-title">
     <div class="absolute inset-0 bg-black/60" onclick="dismissPwaModal()"></div>
     <div class="relative bg-white rounded-2xl shadow-2xl w-full max-w-sm z-10 overflow-hidden animate-slide-up">
-        <div class="bg-gradient-to-r from-indigo-600 to-violet-600 p-6 text-white text-center">
-            <img src="{{ asset('icons/icon-192.png') }}" alt="Newbook" class="w-16 h-16 rounded-2xl mx-auto mb-3 shadow-lg bg-white/20">
-            <h2 id="pwa-install-title" class="text-xl font-bold">Install Newbook</h2>
-            <p class="text-white/90 text-sm mt-1">Add to your home screen for quick access</p>
+        <div class="bg-[#002E5D] p-6 text-white text-center">
+            <img src="{{ asset('images/apple-touch-icon.png') }}" alt="NEWBOOK" class="w-20 h-20 rounded-2xl mx-auto mb-3 shadow-lg bg-white p-1 object-contain">
+            <h2 id="pwa-install-title" class="text-xl font-bold">Install NEWBOOK</h2>
+            <p class="text-white/90 text-sm mt-1">New Chapter, New Knowledge</p>
         </div>
         <div class="p-5">
             <p id="pwa-install-message" class="text-sm text-gray-600 text-center mb-5">

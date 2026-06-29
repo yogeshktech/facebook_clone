@@ -103,6 +103,7 @@ Route::middleware('auth')->group(function () {
     Route::get('/reels', [ReelController::class, 'index'])->name('reels.index');
     Route::post('/reels', [ReelController::class, 'store'])->name('reels.store');
     Route::post('/reels/{reel}/like', [ReelController::class, 'like'])->name('reels.like');
+    Route::post('/reels/{reel}/view', [ReelController::class, 'view'])->name('reels.view');
     Route::post('/reels/{reel}/comment', [ReelController::class, 'comment'])->name('reels.comment');
     Route::post('/reels/{reel}/share', [ReelController::class, 'share'])->name('reels.share');
 

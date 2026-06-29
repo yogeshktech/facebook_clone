@@ -4,14 +4,15 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta name="csrf-token" content="{{ csrf_token() }}">
-    <meta name="theme-color" content="#6366F1">
+    <meta name="theme-color" content="#002E5D">
     <meta name="mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="default">
+    <meta name="apple-mobile-web-app-title" content="NEWBOOK">
     <link rel="manifest" href="{{ asset('manifest.json') }}">
-    <link rel="icon" type="image/svg+xml" href="{{ asset('favicon.svg') }}">
-    <link rel="apple-touch-icon" href="{{ asset('favicon.svg') }}">
-    <title>@yield('title', 'Newbook') - {{ config('app.name', 'Newbook') }}</title>
+    <link rel="icon" type="image/png" sizes="32x32" href="{{ asset('images/favicon.png') }}">
+    <link rel="apple-touch-icon" href="{{ asset('images/apple-touch-icon.png') }}">
+    <title>@yield('title', 'NEWBOOK') - {{ config('app.name', 'NEWBOOK') }}</title>
     @auth
     @php
         $firebaseWebConfig = config('services.firebase.api_key') ? [
@@ -28,6 +29,7 @@
     <script>
         window.authUserId = {{ auth()->id() }};
         window.firebaseConfig = @json($firebaseWebConfig);
+        window.maxVideoUploadMb = {{ config('media.max_video_mb') }};
     </script>
     @endauth
     @include('layouts.assets')

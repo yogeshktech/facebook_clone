@@ -88,4 +88,21 @@ class Post extends Model
     {
         return $this->hasMany(Comment::class);
     }
+
+    public function reelViews(): HasMany
+    {
+        return $this->hasMany(ReelView::class, 'post_id');
+    }
+
+    public function recordReelView(int $userId): void
+    {
+        if ($this->type !== 'reel' || $userId === $this->user_id) {
+            return;
+        }
+
+        ReelView::firstOrCreate(
+            ['post_id' => $this->id, 'user_id' => $userId],
+            ['viewed_at' => now()]
+        );
+    }
 }

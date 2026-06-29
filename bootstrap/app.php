@@ -23,7 +23,8 @@ return Application::configure(basePath: dirname(__DIR__))
     })
     ->withExceptions(function (Exceptions $exceptions): void {
         $exceptions->render(function (\Illuminate\Http\Exceptions\PostTooLargeException $e, $request) {
-            $message = 'Video/file is too large for the server (current limit ~8MB). Admin must set PHP post_max_size=70M and nginx client_max_body_size=64M. Try a video under 8MB for now, or see deploy/README.md';
+            $maxMb = config('media.max_video_mb', 100);
+            $message = "Video/file is too large. Maximum is {$maxMb}MB. Server must have PHP post_max_size=110M and nginx client_max_body_size=128M. See deploy/README.md";
 
             if ($request->expectsJson()) {
                 return response()->json(['message' => $message], 413);

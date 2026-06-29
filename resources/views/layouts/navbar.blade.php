@@ -4,11 +4,10 @@
         <div class="flex items-center gap-2 flex-1 min-w-0">
             <a href="{{ route('feed.index') }}" class="flex items-center gap-2 flex-shrink-0">
                 <x-brand-logo size="sm" />
-                <span class="hidden sm:block text-xl font-bold bg-gradient-to-r from-indigo-600 to-violet-600 bg-clip-text text-transparent">Newbook</span>
             </a>
             <form action="{{ route('search') }}" method="GET" class="hidden md:block">
                 <input type="search" name="q" value="{{ request('q') }}"
-                    placeholder="Search Newbook"
+                    placeholder="Search NEWBOOK"
                     class="bg-fb-gray rounded-full px-4 py-2 w-60 text-sm focus:outline-none focus:ring-2 focus:ring-fb-blue">
             </form>
             <a href="{{ route('search') }}" class="md:hidden nav-icon flex-shrink-0" title="Search">

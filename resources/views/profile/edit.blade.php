@@ -32,10 +32,10 @@
                 <label class="block text-sm font-medium mb-1">Profile Picture</label>
                 <input type="file" name="avatar" accept="image/*" class="input-field">
             </div>
-            <div>
+            {{-- <div>
                 <label class="block text-sm font-medium mb-1">Cover Photo</label>
                 <input type="file" name="cover_photo" accept="image/*" class="input-field">
-            </div>
+            </div> --}}
             <button type="submit" class="btn-primary w-full">Save Changes</button>
         </form>
     </div>

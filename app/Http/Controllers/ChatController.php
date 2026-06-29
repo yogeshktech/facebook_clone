@@ -5,7 +5,6 @@ namespace App\Http\Controllers;
 use App\Events\MessageSent;
 use App\Models\Conversation;
 use App\Models\Message;
-use App\Models\Message;
 use App\Models\User;
 use App\Services\NotificationService;
 use App\Support\MediaStorage;
@@ -116,7 +115,7 @@ class ChatController extends Controller
 
         $validated = $request->validate([
             'body' => ['nullable', 'string', 'max:5000'],
-            'media' => ['nullable', 'file', 'mimes:jpg,jpeg,png,gif,webp,mp4,webm', 'max:5120'],
+            'media' => ['nullable', 'file', 'mimes:jpg,jpeg,png,gif,webp,mp4,webm,mov', 'max:'.config('media.max_video_kb')],
         ]);
 
         if (! $request->filled('body') && ! $request->hasFile('media')) {

@@ -19,9 +19,10 @@ sudo nano /etc/php/8.2/fpm/php.ini
 ```
 
 ```ini
-upload_max_filesize = 64M
-post_max_size = 70M
-max_execution_time = 300
+upload_max_filesize = 100M
+post_max_size = 110M
+max_execution_time = 600
+memory_limit = 512M
 ```
 
 ```bash
@@ -34,7 +35,7 @@ Verify:
 php -i | grep post_max_size
 ```
 
-Should show `70M`, not `8M`.
+Should show `110M`, not `8M`.
 
 ### 2. Nginx limits
 
@@ -45,14 +46,14 @@ sudo nano /etc/nginx/sites-available/newbook
 Inside the `server { ... }` block for `newbook.workarya.com`, add or update:
 
 ```nginx
-client_max_body_size 64M;
+client_max_body_size 128M;
 ```
 
 In the `location ~ \.php$` block, add:
 
 ```nginx
 fastcgi_read_timeout 300;
-fastcgi_param PHP_VALUE "upload_max_filesize=64M \n post_max_size=70M \n max_execution_time=300";
+fastcgi_param PHP_VALUE "upload_max_filesize=100M \n post_max_size=110M \n max_execution_time=600";
 ```
 
 Then:
@@ -71,9 +72,10 @@ sudo nano /etc/php/8.2/fpm/php.ini
 Set:
 
 ```ini
-upload_max_filesize = 64M
-post_max_size = 70M
-max_execution_time = 300
+upload_max_filesize = 100M
+post_max_size = 110M
+max_execution_time = 600
+memory_limit = 512M
 ```
 
 ```bash
@@ -86,6 +88,6 @@ See `deploy/nginx-newbook.conf` in this repo.
 
 ## App limits
 
-- Reels: up to **50MB** video
-- Stories & posts: up to **50MB** video, images auto-compressed in browser
-- Server must allow **at least 64MB** (nginx + PHP) or uploads will fail
+- Reels, stories, posts, chat video: up to **100MB**
+- Images auto-compressed in browser before upload
+- Server must allow **128MB nginx** + **110MB PHP post_max_size**

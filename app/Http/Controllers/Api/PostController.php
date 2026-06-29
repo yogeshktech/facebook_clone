@@ -33,7 +33,7 @@ class PostController extends Controller
     {
         $validated = $request->validate([
             'content' => ['nullable', 'string', 'max:5000'],
-            'media' => ['nullable', 'file', 'mimes:jpg,jpeg,png,gif,webp,mp4,webm', 'max:5120'],
+            'media' => ['nullable', 'file', 'mimes:jpg,jpeg,png,gif,webp,mp4,webm,mov', 'max:'.config('media.max_video_kb')],
             'group_id' => ['nullable', 'exists:groups,id'],
             'page_id' => ['nullable', 'exists:pages,id'],
         ]);

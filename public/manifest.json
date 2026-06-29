@@ -1,13 +1,13 @@
 {
     "id": "/",
-    "name": "Newbook",
-    "short_name": "Newbook",
-    "description": "Connect with friends and share moments on Newbook",
+    "name": "NEWBOOK",
+    "short_name": "NEWBOOK",
+    "description": "NEWBOOK — New Chapter, New Knowledge. Connect with friends and share moments.",
     "start_url": "/feed",
     "scope": "/",
     "display": "standalone",
-    "background_color": "#F0F2F5",
-    "theme_color": "#6366F1",
+    "background_color": "#FFFFFF",
+    "theme_color": "#002E5D",
     "orientation": "portrait-primary",
     "icons": [
         {
