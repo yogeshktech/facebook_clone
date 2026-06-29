@@ -151,11 +151,30 @@ class PostController extends Controller
             $parentId = $parent->parent_id ?? $parent->id;
         }
 
+        $content = trim($validated['content']);
+
+        $isDuplicate = Comment::where('user_id', auth()->id())
+            ->where('post_id', $post->id)
+            ->where('content', $content)
+            ->where(function ($query) use ($parentId) {
+                if ($parentId === null) {
+                    $query->whereNull('parent_id');
+                } else {
+                    $query->where('parent_id', $parentId);
+                }
+            })
+            ->where('created_at', '>=', now()->subSeconds(15))
+            ->exists();
+
+        if ($isDuplicate) {
+            return back();
+        }
+
         Comment::create([
             'user_id' => auth()->id(),
             'post_id' => $post->id,
             'parent_id' => $parentId,
-            'content' => $validated['content'],
+            'content' => $content,
         ]);
 
         if ($post->user_id !== auth()->id()) {

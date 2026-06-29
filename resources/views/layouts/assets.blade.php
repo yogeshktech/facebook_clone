@@ -191,10 +191,17 @@
         };
 
         document.querySelectorAll('.comment-form').forEach((form) => {
-            form.addEventListener('submit', function () {
+            if (form.dataset.dedupBound === '1') return;
+            form.dataset.dedupBound = '1';
+            form.addEventListener('submit', function (e) {
+                if (form.dataset.submitting === '1') {
+                    e.preventDefault();
+                    return;
+                }
+                form.dataset.submitting = '1';
                 const btn = form.querySelector('button[type="submit"]');
                 if (btn) { btn.disabled = true; btn.textContent = 'Posting...'; }
-                form.querySelectorAll('input[type="text"]').forEach((input) => { input.readOnly = true; });
+                form.querySelectorAll('input[type="text"], textarea').forEach((input) => { input.readOnly = true; });
             });
         });
 

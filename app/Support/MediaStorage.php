@@ -31,8 +31,15 @@ class MediaStorage
         }
 
         $awsUrl = config('filesystems.disks.s3.url');
-        if ($awsUrl) {
-            return rtrim($awsUrl, '/').'/'.ltrim($relativePath, '/');
+        if ($awsUrl && ! self::mustUseProxy()) {
+            $direct = rtrim($awsUrl, '/').'/'.ltrim($relativePath, '/');
+
+            // Never serve insecure MinIO URLs on an HTTPS page (browser blocks mixed content).
+            if (self::isInsecureUrl($direct) && self::requestIsSecure()) {
+                return request()->getSchemeAndHttpHost().'/media/'.ltrim($relativePath, '/');
+            }
+
+            return $direct;
         }
 
         return Storage::disk('public')->url($relativePath);
@@ -63,8 +70,7 @@ class MediaStorage
             return true;
         }
 
-        $appUrl = rtrim((string) config('app.url'), '/');
-        if ($appUrl !== '' && str_starts_with($path, $appUrl.'/media/')) {
+        if (preg_match('#/media/.+#', $path)) {
             return true;
         }
 
@@ -118,6 +124,9 @@ class MediaStorage
         return str_starts_with($file->getMimeType(), 'video/') ? 'video' : 'image';
     }
 
+    /**
+     * HTTPS proxy base for browser-facing image URLs (avoids mixed-content blocks).
+     */
     private static function publicBaseUrl(): ?string
     {
         $configured = config('filesystems.media_public_url');
@@ -130,11 +139,47 @@ class MediaStorage
         }
 
         $appUrl = rtrim((string) config('app.url'), '/');
-        if ($appUrl === '' || self::isLocalUrl($appUrl)) {
-            return null;
+        if ($appUrl !== '' && ! self::isLocalUrl($appUrl)) {
+            return $appUrl.'/media';
         }
 
-        return $appUrl.'/media';
+        // APP_URL still localhost on live — use the actual HTTPS domain from the request.
+        if (! app()->runningInConsole() && self::requestIsSecure()) {
+            return request()->getSchemeAndHttpHost().'/media';
+        }
+
+        return null;
+    }
+
+    private static function mustUseProxy(): bool
+    {
+        if (config('filesystems.media_public_url')) {
+            return true;
+        }
+
+        if (config('filesystems.media_disk') !== 's3') {
+            return false;
+        }
+
+        $appUrl = (string) config('app.url', '');
+        if ($appUrl !== '' && ! self::isLocalUrl($appUrl)) {
+            return true;
+        }
+
+        return ! app()->runningInConsole() && self::requestIsSecure();
+    }
+
+    private static function requestIsSecure(): bool
+    {
+        if (app()->runningInConsole()) {
+            return false;
+        }
+
+        $request = request();
+
+        return $request->isSecure()
+            || $request->header('X-Forwarded-Proto') === 'https'
+            || $request->header('X-Forwarded-Ssl') === 'on';
     }
 
     private static function isLocalUrl(string $url): bool
@@ -142,6 +187,11 @@ class MediaStorage
         return str_contains($url, 'localhost')
             || str_contains($url, '127.0.0.1')
             || str_contains($url, '[::1]');
+    }
+
+    private static function isInsecureUrl(string $url): bool
+    {
+        return str_starts_with($url, 'http://');
     }
 
     private static function extractRelativePath(string $path): string
@@ -161,6 +211,10 @@ class MediaStorage
         }
 
         if (preg_match('#/fb-media/(.+)$#', $path, $matches)) {
+            return $matches[1];
+        }
+
+        if (preg_match('#/media/(.+)$#', $path, $matches)) {
             return $matches[1];
         }
 
