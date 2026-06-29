@@ -2,8 +2,11 @@
 
 namespace App\Http\Controllers;
 
+use App\Events\MessageSent;
 use App\Models\Comment;
+use App\Models\Conversation;
 use App\Models\Like;
+use App\Models\Message;
 use App\Models\Post;
 use App\Models\User;
 use App\Services\NotificationService;
@@ -136,6 +139,35 @@ class ReelController extends Controller
         }
 
         return back()->with('success', 'Reel shared to your timeline!');
+    }
+
+    public function sendToFriend(Post $reel, User $user): RedirectResponse
+    {
+        abort_unless($reel->type === 'reel', 404);
+        abort_unless(auth()->user()->isFriendsWith($user), 403);
+
+        $conversation = Conversation::findBetweenUsers(auth()->id(), $user->id);
+
+        if (! $conversation) {
+            $conversation = Conversation::create(['is_group' => false]);
+            $conversation->users()->attach([auth()->id(), $user->id]);
+        }
+
+        $reelUrl = route('reels.index').'#reel-'.$reel->id;
+
+        $message = Message::create([
+            'conversation_id' => $conversation->id,
+            'user_id' => auth()->id(),
+            'body' => auth()->user()->name.' shared a reel with you: '.$reelUrl,
+        ]);
+
+        $conversation->touch();
+        broadcast(new MessageSent($message))->toOthers();
+        NotificationService::chatMessage($conversation, auth()->user(), $message);
+
+        $reel->increment('shares_count');
+
+        return back()->with('success', 'Reel sent to '.$user->name.' in Messenger.');
     }
 
     public function view(Request $request, Post $reel): JsonResponse

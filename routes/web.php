@@ -107,6 +107,7 @@ Route::middleware('auth')->group(function () {
     Route::post('/reels/{reel}/view', [ReelController::class, 'view'])->name('reels.view');
     Route::post('/reels/{reel}/comment', [ReelController::class, 'comment'])->name('reels.comment');
     Route::post('/reels/{reel}/share', [ReelController::class, 'share'])->name('reels.share');
+    Route::post('/reels/{reel}/send/{user}', [ReelController::class, 'sendToFriend'])->name('reels.send');
 
     // Chat
     Route::get('/chat', [ChatController::class, 'index'])->name('chat.index');

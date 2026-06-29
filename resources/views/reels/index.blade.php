@@ -135,15 +135,13 @@
                     <span class="text-xs mt-1">{{ $reel->comments_count }}</span>
                 </button>
 
-                <form action="{{ route('reels.share', $reel) }}" method="POST">
-                    @csrf
-                    <button type="submit" class="flex flex-col items-center text-white">
-                        <div class="w-11 h-11 rounded-full bg-white/20 flex items-center justify-center">
-                            <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8.684 13.342C8.886 12.938 9 12.482 9 12c0-.482-.114-.938-.316-1.342m0 2.684a3 3 0 110-2.684m0 2.684l6.632 3.316m-6.632-6l6.632-3.316m0 0a3 3 0 105.367-2.684 3 3 0 00-5.367 2.684zm0 9.316a3 3 0 105.368 2.684 3 3 0 00-5.368-2.684z"/></svg>
-                        </div>
-                        <span class="text-xs mt-1">{{ $reel->shares_count }}</span>
-                    </button>
-                </form>
+                <button type="button" onclick="openReelShareModal({{ $reel->id }})"
+                    class="flex flex-col items-center text-white">
+                    <div class="w-11 h-11 rounded-full bg-white/20 flex items-center justify-center">
+                        <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8.684 13.342C8.886 12.938 9 12.482 9 12c0-.482-.114-.938-.316-1.342m0 2.684a3 3 0 110-2.684m0 2.684l6.632 3.316m-6.632-6l6.632-3.316m0 0a3 3 0 105.367-2.684 3 3 0 00-5.367 2.684zm0 9.316a3 3 0 105.368 2.684 3 3 0 00-5.368-2.684z"/></svg>
+                    </div>
+                    <span class="text-xs mt-1">{{ $reel->shares_count }}</span>
+                </button>
             </div>
 
             {{-- Comment panel --}}
@@ -154,6 +152,33 @@
                         class="flex-1 bg-fb-gray rounded-full px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-fb-blue">
                     <button type="submit" class="text-fb-blue font-semibold text-sm">Post</button>
                 </form>
+            </div>
+
+            {{-- Share to friends modal --}}
+            <div id="reel-share-modal-{{ $reel->id }}" class="hidden fixed inset-0 z-[60] flex items-center justify-center p-4" role="dialog" aria-modal="true">
+                <div class="absolute inset-0 bg-black/60" onclick="closeReelShareModal({{ $reel->id }})"></div>
+                <div class="relative bg-white rounded-xl shadow-2xl w-full max-w-md max-h-[80vh] flex flex-col z-10">
+                    <div class="flex items-center justify-between p-4 border-b">
+                        <h3 class="text-lg font-bold">Share reel</h3>
+                        <button type="button" onclick="closeReelShareModal({{ $reel->id }})" class="text-gray-500 hover:text-gray-800 text-2xl leading-none">&times;</button>
+                    </div>
+                    <div class="p-4 overflow-y-auto flex-1">
+                        <p class="text-sm font-semibold text-gray-600 mb-3">Send to friends</p>
+                        @forelse($friends as $friend)
+                            <form action="{{ route('reels.send', [$reel, $friend]) }}" method="POST"
+                                class="flex items-center gap-3 py-2.5 px-2 rounded-lg hover:bg-fb-gray border-b border-gray-50 last:border-0">
+                                @csrf
+                                <img src="{{ $friend->avatar_url }}" alt="" class="w-10 h-10 rounded-full object-cover flex-shrink-0">
+                                <span class="flex-1 font-medium text-sm truncate">{{ $friend->name }}</span>
+                                <button type="submit" class="bg-fb-blue text-white text-sm font-semibold px-4 py-1.5 rounded-lg hover:bg-fb-blue-dark flex-shrink-0">
+                                    Send
+                                </button>
+                            </form>
+                        @empty
+                            <p class="text-sm text-gray-500 text-center py-6">No friends yet. Add friends to share reels.</p>
+                        @endforelse
+                    </div>
+                </div>
             </div>
         </div>
         @empty
@@ -170,6 +195,15 @@
 </div>
 
 <script>
+window.openReelShareModal = function (reelId) {
+    document.getElementById('reel-share-modal-' + reelId)?.classList.remove('hidden');
+    document.body.style.overflow = 'hidden';
+};
+window.closeReelShareModal = function (reelId) {
+    document.getElementById('reel-share-modal-' + reelId)?.classList.add('hidden');
+    document.body.style.overflow = '';
+};
+
 document.addEventListener('DOMContentLoaded', () => {
     const csrfToken = document.querySelector('meta[name="csrf-token"]')?.content;
     const recordedViews = new Set();
