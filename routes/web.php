@@ -120,7 +120,7 @@ Route::middleware('auth')->group(function () {
     Route::post('/videos/{video}/view', [VideoController::class, 'view'])->name('videos.view');
     Route::post('/videos/{video}/comment', [VideoController::class, 'comment'])->name('videos.comment');
     Route::post('/videos/{video}/share', [VideoController::class, 'share'])->name('videos.share');
-    Route::post('/reels/{reel}/send/{user}', [ReelController::class, 'sendToFriend'])->name('reels.send');
+    Route::post('/videos/{video}/send/{user}', [VideoController::class, 'sendToFriend'])->name('videos.send');
 
     // Chat
     Route::get('/chat', [ChatController::class, 'index'])->name('chat.index');

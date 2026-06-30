@@ -12,7 +12,7 @@
                 @if($isAdminLogin)
                     Admin login — manage client ads & payments
                 @else
-                    Client login — register, add ads & pay budget
+                   
                 @endif
             </p>
         </div>
@@ -55,12 +55,12 @@
                     <div class="flex-1 h-px bg-gray-200"></div>
                 </div>
 
-                <div class="space-y-3">
+                {{-- <div class="space-y-3">
                     <a href="{{ route('social.redirect', 'google') }}"
                         class="flex items-center justify-center gap-2 w-full border border-gray-300 py-3 rounded-lg hover:bg-gray-50 transition">
                         Continue with Google
                     </a>
-                </div>
+                </div> --}}
 
                 <div class="mt-6 text-center space-y-2">
                     <a href="{{ route('register') }}" class="text-fb-blue hover:underline block font-medium">New client? Register here</a>
@@ -68,7 +68,7 @@
                 </div>
             @endunless
 
-            <div class="mt-6 pt-4 border-t border-gray-150">
+            {{-- <div class="mt-6 pt-4 border-t border-gray-150">
                 <p class="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-3 text-center">Quick Login (Demo)</p>
                 <div class="grid grid-cols-2 gap-3">
                     <button type="button" onclick="quickLogin('demo@newbook.test', 'password')" class="flex flex-col items-center justify-center border border-indigo-200 hover:border-indigo-400 bg-indigo-50/50 hover:bg-indigo-50 p-2.5 rounded-lg transition cursor-pointer text-center">
@@ -84,7 +84,7 @@
                     <a href="{{ route('admin.login') }}" class="text-indigo-600 hover:underline">Admin page</a>
                     <a href="{{ route('client.login') }}" class="text-violet-600 hover:underline">Client page</a>
                 </div>
-            </div>
+            </div> --}}
 
             <script>
                 function quickLogin(username, password) {

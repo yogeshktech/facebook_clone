@@ -38,40 +38,7 @@
 
     {{-- Main Feed --}}
     <div class="lg:col-span-6 space-y-4">
-        {{-- Stories --}}
-        <div class="bg-white rounded-lg shadow p-4">
-            <div class="flex gap-3 overflow-x-auto pb-2">
-                <form action="{{ route('stories.store') }}" method="POST" enctype="multipart/form-data" class="flex-shrink-0">
-                    @csrf
-                    <label class="cursor-pointer block w-28">
-                        <div class="w-28 h-44 rounded-xl bg-fb-gray border-2 border-dashed border-gray-300 flex flex-col items-center justify-center hover:border-fb-blue transition">
-                            <svg class="w-8 h-8 text-fb-blue mb-2" fill="currentColor" viewBox="0 0 24 24"><path d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z"/></svg>
-                            <span class="text-xs font-semibold text-fb-blue">Create Story</span>
-                        </div>
-                        <input type="file" name="media" accept="image/*,video/*" class="hidden" onchange="compressAndSubmitForm(this)">
-                    </label>
-                </form>
-                @foreach($stories as $userId => $userStories)
-                    @php
-                        $storyUser = $userStories->first()->user;
-                        $firstStory = $userStories->first();
-                        $previewStory = $userStories->last();
-                        $storyCount = $userStories->count();
-                        $isOwnStory = $userId == auth()->id();
-                    @endphp
-                    <a href="{{ route('stories.show', $firstStory) }}" class="flex-shrink-0 w-28 h-44 rounded-xl overflow-hidden relative bg-gradient-to-b from-fb-blue to-purple-600">
-                        <img src="{{ $storyUser->avatar_url }}" alt="" class="absolute top-3 left-3 w-10 h-10 rounded-full border-4 border-fb-blue object-cover z-10">
-                        <img src="{{ $previewStory->media_url }}" alt="" class="w-full h-full object-cover opacity-80">
-                        <span class="absolute bottom-2 left-2 right-2 text-white text-xs font-semibold truncate">{{ $storyUser->name }}</span>
-                        @if($storyCount > 1)
-                            <span class="absolute top-3 right-3 bg-black/60 text-white text-xs px-2 py-0.5 rounded-full z-10">{{ $storyCount }} stories</span>
-                        @elseif($isOwnStory && isset($previewStory->views_count) && $previewStory->views_count > 0)
-                            <span class="absolute top-3 right-3 bg-black/60 text-white text-xs px-2 py-0.5 rounded-full z-10">{{ $previewStory->views_count }} views</span>
-                        @endif
-                    </a>
-                @endforeach
-            </div>
-        </div>
+       
 
         {{-- Create Post --}}
         <div class="bg-white rounded-lg shadow p-4" id="create-post-card">
@@ -207,7 +174,40 @@
 
             })();
         </script>
-
+ {{-- Stories --}}
+        <div class="bg-white rounded-lg shadow p-4">
+            <div class="flex gap-3 overflow-x-auto pb-2">
+                <form action="{{ route('stories.store') }}" method="POST" enctype="multipart/form-data" class="flex-shrink-0">
+                    @csrf
+                    <label class="cursor-pointer block w-28">
+                        <div class="w-28 h-44 rounded-xl bg-fb-gray border-2 border-dashed border-gray-300 flex flex-col items-center justify-center hover:border-fb-blue transition">
+                            <svg class="w-8 h-8 text-fb-blue mb-2" fill="currentColor" viewBox="0 0 24 24"><path d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z"/></svg>
+                            <span class="text-xs font-semibold text-fb-blue">Create Story</span>
+                        </div>
+                        <input type="file" name="media" accept="image/*,video/*" class="hidden" onchange="compressAndSubmitForm(this)">
+                    </label>
+                </form>
+                @foreach($stories as $userId => $userStories)
+                    @php
+                        $storyUser = $userStories->first()->user;
+                        $firstStory = $userStories->first();
+                        $previewStory = $userStories->last();
+                        $storyCount = $userStories->count();
+                        $isOwnStory = $userId == auth()->id();
+                    @endphp
+                    <a href="{{ route('stories.show', $firstStory) }}" class="flex-shrink-0 w-28 h-44 rounded-xl overflow-hidden relative bg-gradient-to-b from-fb-blue to-purple-600">
+                        <img src="{{ $storyUser->avatar_url }}" alt="" class="absolute top-3 left-3 w-10 h-10 rounded-full border-4 border-fb-blue object-cover z-10">
+                        <img src="{{ $previewStory->media_url }}" alt="" class="w-full h-full object-cover opacity-80">
+                        <span class="absolute bottom-2 left-2 right-2 text-white text-xs font-semibold truncate">{{ $storyUser->name }}</span>
+                        @if($storyCount > 1)
+                            <span class="absolute top-3 right-3 bg-black/60 text-white text-xs px-2 py-0.5 rounded-full z-10">{{ $storyCount }} stories</span>
+                        @elseif($isOwnStory && isset($previewStory->views_count) && $previewStory->views_count > 0)
+                            <span class="absolute top-3 right-3 bg-black/60 text-white text-xs px-2 py-0.5 rounded-full z-10">{{ $previewStory->views_count }} views</span>
+                        @endif
+                    </a>
+                @endforeach
+            </div>
+        </div>
         {{-- Posts Feed --}}
         @php $postIndex = 0; @endphp
         @forelse($posts as $post)
