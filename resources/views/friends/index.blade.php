@@ -58,7 +58,7 @@
                     <a href="{{ route('profile.show', $request->friend) }}" class="font-semibold text-gray-900 hover:underline block truncate">
                         {{ $request->friend->name }}
                     </a>
-                    <p class="text-xs text-amber-600 font-medium">Pending</p>
+                    <p class="text-xs text-amber-600 font-medium">Request Sent</p>
                 </div>
                 <form action="{{ route('friends.cancel', $request) }}" method="POST" class="flex-shrink-0">
                     @csrf

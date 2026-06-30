@@ -87,7 +87,7 @@
                 const form = document.getElementById('create-post-form');
                 const alertEl = document.getElementById('post-form-alert');
                 const submitBtn = document.getElementById('post-submit-btn');
-                const contentInput = form?.querySelector('[name="content"]');
+                const contentInput = form ? .querySelector('[name="content"]');
                 const mediaInput = document.getElementById('post-media-input');
 
                 function showAlert(message, type) {
@@ -97,10 +97,13 @@
                         'mb-3 p-3 rounded-lg text-sm font-medium bg-green-50 text-green-700 border border-green-200' :
                         'mb-3 p-3 rounded-lg text-sm font-medium bg-red-50 text-red-600 border border-red-200';
                     alertEl.classList.remove('hidden');
-                    alertEl.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+                    alertEl.scrollIntoView({
+                        behavior: 'smooth'
+                        , block: 'nearest'
+                    });
                 }
 
-                mediaInput?.addEventListener('change', function(e) {
+                mediaInput ? .addEventListener('change', function(e) {
                     const file = e.target.files[0];
                     const preview = document.getElementById('media-preview');
                     const img = document.getElementById('media-preview-img');
@@ -121,11 +124,11 @@
                     }
                 });
 
-                form?.addEventListener('submit', async function(e) {
+                form ? .addEventListener('submit', async function(e) {
                     e.preventDefault();
 
-                    const content = contentInput?.value.trim() || '';
-                    const hasMedia = mediaInput?.files?.length > 0;
+                    const content = contentInput ? .value.trim() || '';
+                    const hasMedia = mediaInput ? .files ? .length > 0;
 
                     if (!content && !hasMedia) {
                         showAlert('Please write something or attach a photo/video.', 'error');
@@ -137,20 +140,20 @@
 
                     try {
                         const formData = new FormData(form);
-                        const mediaFile = mediaInput?.files?.[0];
+                        const mediaFile = mediaInput ? .files ? . [0];
                         if (mediaFile) {
                             const prepared = await window.prepareMediaFile(mediaFile);
                             formData.set('media', prepared);
                         }
 
                         const res = await fetch('/posts', {
-                            method: 'POST',
-                            body: formData,
-                            credentials: 'same-origin',
-                            headers: {
-                                'X-Requested-With': 'XMLHttpRequest',
-                                'Accept': 'application/json',
-                                'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]')?.content || ''
+                            method: 'POST'
+                            , body: formData
+                            , credentials: 'same-origin'
+                            , headers: {
+                                'X-Requested-With': 'XMLHttpRequest'
+                                , 'Accept': 'application/json'
+                                , 'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]') ? .content || ''
                             }
                         });
 
@@ -179,6 +182,7 @@
                     }
                 });
             })();
+
         </script>
 
         {{-- Stories --}}
@@ -219,16 +223,16 @@
 
         {{-- Reels Strip --}}
         @if(isset($reels) && $reels->count() > 0)
-            @include('feed.partials.reels-strip', ['reels' => $reels])
+        @include('feed.partials.reels-strip', ['reels' => $reels])
         @endif
 
         {{-- Posts Feed --}}
         <div id="feed-posts">
             @include('feed.partials.posts', [
-                'posts' => $posts,
-                'reels' => $reels,
-                'activeAds' => $activeAds,
-                'offset' => $offset ?? 0
+            'posts' => $posts,
+            'reels' => $reels,
+            'activeAds' => $activeAds,
+            'offset' => $offset ?? 0
             ])
         </div>
 
@@ -255,7 +259,9 @@
                 url.searchParams.set('offset', next.dataset.offset || 0);
 
                 const response = await fetch(url.toString(), {
-                    headers: { 'X-Requested-With': 'XMLHttpRequest' }
+                    headers: {
+                        'X-Requested-With': 'XMLHttpRequest'
+                    }
                 });
 
                 const html = await response.text();
@@ -272,6 +278,7 @@
                     loadMorePosts();
                 }
             });
+
         </script>
     </div>
 
@@ -280,16 +287,65 @@
         <div class="bg-white rounded-lg shadow p-4">
             <h3 class="font-semibold text-gray-600 mb-3">People you may know</h3>
             @foreach($suggestions as $user)
+
+            @php
+            $friendship = \App\Models\Friendship::where(function ($q) use ($user) {
+            $q->where('user_id', auth()->id())
+            ->where('friend_id', $user->id);
+            })->orWhere(function ($q) use ($user) {
+            $q->where('user_id', $user->id)
+            ->where('friend_id', auth()->id());
+            })->first();
+            @endphp
+
             <div class="flex items-center gap-3 mb-3">
+
                 <img src="{{ $user->avatar_url }}" alt="" class="w-10 h-10 rounded-full object-cover">
+
                 <div class="flex-1 min-w-0">
-                    <a href="{{ route('profile.show', $user) }}" class="font-semibold text-sm hover:underline truncate block">{{ $user->name }}</a>
+                    <a href="{{ route('profile.show', $user) }}" class="font-semibold text-sm hover:underline truncate block">
+                        {{ $user->name }}
+                    </a>
                 </div>
+
+                @if(!$friendship)
+
+                {{-- No friendship --}}
                 <form action="{{ route('friends.send', $user) }}" method="POST">
                     @csrf
-                    <button type="submit" class="bg-fb-gray hover:bg-gray-200 text-fb-blue text-sm font-semibold px-3 py-1 rounded-lg">Add</button>
+                    <button type="submit" class="bg-fb-gray hover:bg-gray-200 text-fb-blue text-sm font-semibold px-3 py-1 rounded-lg">
+                        Add
+                    </button>
                 </form>
+
+                @elseif($friendship->status == 'pending')
+
+                @if($friendship->user_id == auth()->id())
+
+                {{-- Request sent by me --}}
+                <button disabled class="bg-gray-200 text-gray-500 text-sm font-semibold px-3 py-1 rounded-lg cursor-not-allowed">
+                    Request Sent
+                </button>
+
+                @else
+
+                {{-- Request received --}}
+                <a href="{{ route('friends.index') }}" class="bg-yellow-100 text-yellow-700 text-sm font-semibold px-3 py-1 rounded-lg">
+                    Respond
+                </a>
+
+                @endif
+
+                @elseif($friendship->status == 'accepted')
+
+                <button disabled class="bg-green-100 text-green-700 text-sm font-semibold px-3 py-1 rounded-lg">
+                    Friends
+                </button>
+
+                @endif
+
             </div>
+
             @endforeach
         </div>
 
@@ -383,7 +439,7 @@
         document.getElementById('leadModal').classList.add('hidden');
     }
 
-    document.getElementById('leadModalForm')?.addEventListener('submit', async function(e) {
+    document.getElementById('leadModalForm') ? .addEventListener('submit', async function(e) {
         e.preventDefault();
 
         const adId = document.getElementById('leadModalAdId').value;
@@ -396,12 +452,12 @@
         try {
             const formData = new FormData(this);
             const res = await fetch(`/ads/${adId}/lead`, {
-                method: 'POST',
-                body: formData,
-                headers: {
-                    'X-Requested-With': 'XMLHttpRequest',
-                    'Accept': 'application/json',
-                    'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]')?.content || ''
+                method: 'POST'
+                , body: formData
+                , headers: {
+                    'X-Requested-With': 'XMLHttpRequest'
+                    , 'Accept': 'application/json'
+                    , 'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]') ? .content || ''
                 }
             });
 
@@ -429,5 +485,6 @@
             submitBtn.disabled = false;
         }
     });
+
 </script>
 @endsection
