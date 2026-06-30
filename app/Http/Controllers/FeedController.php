@@ -30,14 +30,14 @@ class FeedController extends Controller
             ->whereNull('group_id')
             ->whereNull('page_id')
             ->latest()
-            ->paginate(10);
+            ->cursorPaginate(10);
 
         $stories = Story::groupedForFeed($feedUserIds);
 
         $suggestions = User::where('id', '!=', $user->id)
             ->whereNotIn('id', $friendIds)
             ->inRandomOrder()
-            ->limit(5)
+            ->limit(12)
             ->get();
 
         $activeAds = \App\Models\Advertisement::running()
