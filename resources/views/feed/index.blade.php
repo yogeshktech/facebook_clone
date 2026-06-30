@@ -47,7 +47,6 @@
     {{-- Main Feed --}}
     <div class="lg:col-span-6 space-y-4">
 
-
         {{-- Create Post --}}
         <div class="bg-white rounded-lg shadow p-4" id="create-post-card">
             <div id="post-form-alert" class="hidden mb-3 p-3 rounded-lg text-sm font-medium"></div>
@@ -88,7 +87,7 @@
                 const form = document.getElementById('create-post-form');
                 const alertEl = document.getElementById('post-form-alert');
                 const submitBtn = document.getElementById('post-submit-btn');
-                const contentInput = form ? .querySelector('[name="content"]');
+                const contentInput = form?.querySelector('[name="content"]');
                 const mediaInput = document.getElementById('post-media-input');
 
                 function showAlert(message, type) {
@@ -98,13 +97,10 @@
                         'mb-3 p-3 rounded-lg text-sm font-medium bg-green-50 text-green-700 border border-green-200' :
                         'mb-3 p-3 rounded-lg text-sm font-medium bg-red-50 text-red-600 border border-red-200';
                     alertEl.classList.remove('hidden');
-                    alertEl.scrollIntoView({
-                        behavior: 'smooth'
-                        , block: 'nearest'
-                    });
+                    alertEl.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
                 }
 
-                mediaInput ? .addEventListener('change', function(e) {
+                mediaInput?.addEventListener('change', function(e) {
                     const file = e.target.files[0];
                     const preview = document.getElementById('media-preview');
                     const img = document.getElementById('media-preview-img');
@@ -125,11 +121,11 @@
                     }
                 });
 
-                form ? .addEventListener('submit', async function(e) {
+                form?.addEventListener('submit', async function(e) {
                     e.preventDefault();
 
-                    const content = contentInput ? .value.trim() || '';
-                    const hasMedia = mediaInput ? .files ? .length > 0;
+                    const content = contentInput?.value.trim() || '';
+                    const hasMedia = mediaInput?.files?.length > 0;
 
                     if (!content && !hasMedia) {
                         showAlert('Please write something or attach a photo/video.', 'error');
@@ -141,22 +137,22 @@
 
                     try {
                         const formData = new FormData(form);
-                        const mediaFile = mediaInput ? .files ? . [0];
+                        const mediaFile = mediaInput?.files?.[0];
                         if (mediaFile) {
                             const prepared = await window.prepareMediaFile(mediaFile);
                             formData.set('media', prepared);
                         }
 
                         const res = await fetch('/posts', {
-                            method: 'POST'
-                            , body: formData
-                            , credentials: 'same-origin'
-                            , headers: {
-                                'X-Requested-With': 'XMLHttpRequest'
-                                , 'Accept': 'application/json'
-                                , 'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]') ? .content || ''
-                            , }
-                        , });
+                            method: 'POST',
+                            body: formData,
+                            credentials: 'same-origin',
+                            headers: {
+                                'X-Requested-With': 'XMLHttpRequest',
+                                'Accept': 'application/json',
+                                'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]')?.content || ''
+                            }
+                        });
 
                         if (res.status === 419) {
                             showAlert('Session expired. Please refresh the page and try again.', 'error');
@@ -182,10 +178,9 @@
                         submitBtn.textContent = 'Post';
                     }
                 });
-
             })();
-
         </script>
+
         {{-- Stories --}}
         <div class="bg-white rounded-lg shadow p-4">
             <div class="flex gap-3 overflow-x-auto pb-2">
@@ -222,168 +217,61 @@
             </div>
         </div>
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+        {{-- Reels Strip --}}
+        @if(isset($reels) && $reels->count() > 0)
+            @include('feed.partials.reels-strip', ['reels' => $reels])
+        @endif
 
         {{-- Posts Feed --}}
         <div id="feed-posts">
-
-            @php $postIndex = 0; @endphp
-
-            @forelse($posts as $post)
-
-            @include('components.post-card', ['post' => $post])
-
-            {{-- Inject an ad after the 2nd post --}}
-            @if($postIndex == 1 && !$activeAds->isEmpty() && $ad = $activeAds->first())
-            <div class="bg-white rounded-lg shadow p-4 border border-indigo-100/50 relative space-y-3">
-                <div class="flex items-center gap-2">
-                    <div class="w-9 h-9 rounded-full bg-indigo-600 text-white flex items-center justify-center font-bold text-sm">
-                        Ad
-                    </div>
-
-                    <div>
-                        <div class="flex items-center gap-1.5">
-                            <span class="font-bold text-sm text-gray-900">
-                                Sponsored Campaign
-                            </span>
-
-                            <span class="bg-indigo-100 text-indigo-700 text-[10px] font-extrabold px-1.5 py-0.5 rounded-full">
-                                AD
-                            </span>
-                        </div>
-
-                        <span class="text-xs text-gray-500">
-                            Sponsored
-                        </span>
-                    </div>
-                </div>
-
-                <p class="text-gray-800 text-sm font-medium">
-                    {{ $ad->description }}
-                </p>
-
-                @if($ad->image_url)
-                <div class="rounded-lg overflow-hidden bg-fb-gray max-h-96 border">
-                    <img src="{{ $ad->image_url }}" class="w-full object-cover">
-                </div>
-                @endif
-
-                <div class="bg-gray-50 p-4 border rounded-lg flex items-center justify-between">
-
-                    <div>
-                        <h4 class="font-bold text-gray-900">
-                            {{ $ad->title }}
-                        </h4>
-
-                        <p class="text-xs text-gray-500">
-                            {{ url('/') }}
-                        </p>
-                    </div>
-
-                    <button onclick="openLeadModal({{ $ad->id }}, '{{ addslashes($ad->title) }}', '{{ addslashes($ad->cta_text) }}')" class="btn-primary">
-
-                        {{ $ad->cta_text }}
-
-                    </button>
-
-                </div>
-
-            </div>
-            @endif
-
-            @php $postIndex++; @endphp
-
-            @empty
-
-            <div class="bg-white rounded-lg shadow p-8 text-center text-gray-500">
-                No posts yet.
-            </div>
-
-            @endforelse
-
+            @include('feed.partials.posts', [
+                'posts' => $posts,
+                'reels' => $reels,
+                'activeAds' => $activeAds,
+                'offset' => $offset ?? 0
+            ])
         </div>
-
-        @if($posts->hasMorePages())
-
-        <div id="feed-next-page" data-url="{{ $posts->nextPageUrl() }}">
-        </div>
-
-        @endif
 
         <div id="feed-loading" class="hidden text-center py-5">
-
             <svg class="animate-spin w-8 h-8 mx-auto text-fb-blue" fill="none" viewBox="0 0 24 24">
-
                 <circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4" opacity=".2" />
-
                 <path fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z" />
-
             </svg>
-
         </div>
 
         <script>
             let loading = false;
 
             async function loadMorePosts() {
-
                 if (loading) return;
 
                 const next = document.getElementById('feed-next-page');
-
                 if (!next) return;
 
                 loading = true;
+                document.getElementById('feed-loading').classList.remove('hidden');
 
-                document
-                    .getElementById('feed-loading')
-                    .classList.remove('hidden');
+                const url = new URL(next.dataset.url, window.location.origin);
+                url.searchParams.set('offset', next.dataset.offset || 0);
 
-                const response = await fetch(next.dataset.url, {
-                    headers: {
-                        'X-Requested-With': 'XMLHttpRequest'
-                    }
+                const response = await fetch(url.toString(), {
+                    headers: { 'X-Requested-With': 'XMLHttpRequest' }
                 });
 
                 const html = await response.text();
 
                 next.remove();
-
-                document
-                    .getElementById('feed-posts')
-                    .insertAdjacentHTML('beforeend', html);
-
-                document
-                    .getElementById('feed-loading')
-                    .classList.add('hidden');
+                document.getElementById('feed-posts').insertAdjacentHTML('beforeend', html);
+                document.getElementById('feed-loading').classList.add('hidden');
 
                 loading = false;
             }
 
             window.addEventListener('scroll', () => {
-
-                if (
-                    window.innerHeight + window.scrollY >=
-                    document.body.offsetHeight - 500
-                ) {
+                if (window.innerHeight + window.scrollY >= document.body.offsetHeight - 500) {
                     loadMorePosts();
                 }
-
             });
-
         </script>
     </div>
 
@@ -432,13 +320,10 @@
 
 {{-- Lead Capture Modal --}}
 <div id="leadModal" class="fixed inset-0 z-50 overflow-y-auto hidden">
-    <!-- Backdrop -->
     <div class="fixed inset-0 bg-black/60 backdrop-blur-sm transition-opacity"></div>
 
-    <!-- Modal Dialog -->
     <div class="flex min-h-full items-end justify-center p-4 text-center sm:items-center sm:p-0">
         <div class="relative transform overflow-hidden rounded-2xl bg-white text-left shadow-2xl transition-all sm:my-8 sm:w-full sm:max-w-lg border border-gray-100">
-            <!-- Modal Header -->
             <div class="bg-indigo-600 px-6 py-4 text-white">
                 <h3 class="text-lg font-bold" id="leadModalTitle">Request Details</h3>
                 <p class="text-indigo-100 text-xs mt-1">Pre-filled with your profile info. Edit if needed.</p>
@@ -487,7 +372,6 @@
         document.getElementById('leadModalTitle').textContent = adTitle;
         document.getElementById('leadModalSubmitBtn').textContent = ctaText || 'Submit';
 
-        // Reset form messages
         const alertBox = document.getElementById('leadModalAlert');
         alertBox.classList.add('hidden');
         alertBox.textContent = '';
@@ -499,7 +383,7 @@
         document.getElementById('leadModal').classList.add('hidden');
     }
 
-    document.getElementById('leadModalForm') ? .addEventListener('submit', async function(e) {
+    document.getElementById('leadModalForm')?.addEventListener('submit', async function(e) {
         e.preventDefault();
 
         const adId = document.getElementById('leadModalAdId').value;
@@ -512,13 +396,13 @@
         try {
             const formData = new FormData(this);
             const res = await fetch(`/ads/${adId}/lead`, {
-                method: 'POST'
-                , body: formData
-                , headers: {
-                    'X-Requested-With': 'XMLHttpRequest'
-                    , 'Accept': 'application/json'
-                    , 'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]') ? .content || ''
-                , }
+                method: 'POST',
+                body: formData,
+                headers: {
+                    'X-Requested-With': 'XMLHttpRequest',
+                    'Accept': 'application/json',
+                    'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]')?.content || ''
+                }
             });
 
             const data = await res.json();
@@ -545,6 +429,5 @@
             submitBtn.disabled = false;
         }
     });
-
 </script>
 @endsection

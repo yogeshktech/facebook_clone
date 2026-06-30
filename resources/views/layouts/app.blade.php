@@ -52,7 +52,7 @@
             {{ session('error') }}
         </div>
     @endif
-
+<link rel="stylesheet"href="https://cdn.jsdelivr.net/npm/swiper@11/swiper-bundle.min.css">
     <main class="@auth pt-16 pb-[4.5rem] md:pb-0 @endauth">
         @yield('content')
     </main>
@@ -81,4 +81,37 @@
         </div>
     @endauth
 </body>
+<script src="https://cdn.jsdelivr.net/npm/swiper@11/swiper-bundle.min.js"></script>
+<script>
+document.addEventListener('DOMContentLoaded',function(){
+
+    if(document.querySelector('.reelsSwiper')){
+
+        new Swiper('.reelsSwiper',{
+
+            slidesPerView:2.2,
+            spaceBetween:12,
+
+            breakpoints:{
+
+                640:{
+                    slidesPerView:3.2
+                },
+
+                768:{
+                    slidesPerView:4.2
+                },
+
+                1024:{
+                    slidesPerView:5.2
+                }
+
+            }
+
+        });
+
+    }
+
+});
+</script>
 </html>

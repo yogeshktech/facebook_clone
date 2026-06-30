@@ -2,13 +2,13 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\Advertisement;
 use App\Models\Post;
 use App\Models\Story;
 use App\Models\User;
-use App\Models\Advertisement;
 use Illuminate\Http\Request;
-use Illuminate\View\View;
 use Illuminate\Http\Response;
+use Illuminate\View\View;
 
 class FeedController extends Controller
 {
@@ -16,21 +16,28 @@ class FeedController extends Controller
     {
         try {
             Story::pruneExpired();
-        } catch (\Throwable) {
-            // Ignore cleanup errors
+        } catch (\Throwable $e) {
+            // Ignore
         }
 
         $user = $request->user();
 
+        // Friend IDs
         $friendIds = $this->getFriendIds($user);
-        $followingIds = $user->following()->pluck('users.id')->toArray();
 
+        // Following IDs
+        $followingIds = $user->following()
+            ->pluck('users.id')
+            ->toArray();
+
+        // Feed User IDs
         $feedUserIds = array_unique(array_merge(
             [$user->id],
             $friendIds,
             $followingIds
         ));
 
+        // Feed Posts
         $posts = Post::with([
             'user',
             'sharedPost.user',
@@ -45,27 +52,62 @@ class FeedController extends Controller
             ->where('type', '!=', 'reel')
             ->whereNull('group_id')
             ->whereNull('page_id')
-            ->orderByDesc('id')
+            ->latest('id')
             ->cursorPaginate(5);
 
         /*
         |--------------------------------------------------------------------------
-        | AJAX Request
+        | AJAX (Infinite Scroll)
         |--------------------------------------------------------------------------
-        | Infinite scroll ke time sirf posts return hongi.
         */
+
         if ($request->ajax()) {
 
-            return response()->view(
-                'feed.partials.posts',
-                [
-                    'posts' => $posts,
-                    'activeAds' => Advertisement::running()->inRandomOrder()->get(),
-                ]
-            );
+            $reels = Post::with('user')
+                ->withCount('likes')
+                ->where('type', 'reel')
+                ->latest('id')
+                ->take(10)
+                ->get();
+
+            $activeAds = Advertisement::running()
+                ->inRandomOrder()
+                ->get();
+
+            return response()->view('feed.partials.posts', [
+                'posts' => $posts,
+                'reels' => $reels,
+                'activeAds' => $activeAds,
+                'offset' => (int) $request->offset,
+            ]);
         }
 
+        /*
+        |--------------------------------------------------------------------------
+        | Stories
+        |--------------------------------------------------------------------------
+        */
+
         $stories = Story::groupedForFeed($feedUserIds);
+
+        /*
+        |--------------------------------------------------------------------------
+        | Reels
+        |--------------------------------------------------------------------------
+        */
+
+        $reels = Post::with('user')
+            ->withCount('likes')
+            ->where('type', 'reel')
+            ->latest('id')
+            ->take(10)
+            ->get();
+
+        /*
+        |--------------------------------------------------------------------------
+        | Suggestions
+        |--------------------------------------------------------------------------
+        */
 
         $suggestions = User::where('id', '!=', $user->id)
             ->whereNotIn('id', $friendIds)
@@ -73,16 +115,24 @@ class FeedController extends Controller
             ->limit(12)
             ->get();
 
+        /*
+        |--------------------------------------------------------------------------
+        | Ads
+        |--------------------------------------------------------------------------
+        */
+
         $activeAds = Advertisement::running()
             ->inRandomOrder()
             ->get();
 
-        return view('feed.index', compact(
-            'posts',
-            'stories',
-            'suggestions',
-            'activeAds'
-        ));
+        return view('feed.index', [
+            'posts' => $posts,
+            'stories' => $stories,
+            'reels' => $reels,
+            'suggestions' => $suggestions,
+            'activeAds' => $activeAds,
+            'offset' => 0,
+        ]);
     }
 
     private function getFriendIds(User $user): array
@@ -98,6 +148,7 @@ class FeedController extends Controller
         return $sent
             ->merge($received)
             ->unique()
+            ->values()
             ->toArray();
     }
 }
