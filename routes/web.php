@@ -18,6 +18,7 @@ use App\Http\Controllers\PageController;
 use App\Http\Controllers\PostController;
 use App\Http\Controllers\ProfileController;
 use App\Http\Controllers\ReelController;
+use App\Http\Controllers\VideoController;
 use App\Http\Controllers\SearchController;
 use App\Http\Controllers\StoryController;
 use Illuminate\Support\Facades\Route;
@@ -109,6 +110,16 @@ Route::middleware('auth')->group(function () {
     Route::post('/reels/{reel}/view', [ReelController::class, 'view'])->name('reels.view');
     Route::post('/reels/{reel}/comment', [ReelController::class, 'comment'])->name('reels.comment');
     Route::post('/reels/{reel}/share', [ReelController::class, 'share'])->name('reels.share');
+    Route::post('/reels/{reel}/send/{user}', [ReelController::class, 'sendToFriend'])->name('reels.send');
+
+    // Videos
+    Route::get('/videos', [VideoController::class, 'index'])->name('videos.index');
+    Route::post('/videos', [VideoController::class, 'store'])->name('videos.store');
+    Route::get('/videos/{video}', [VideoController::class, 'show'])->name('videos.show');
+    Route::post('/videos/{video}/like', [VideoController::class, 'like'])->name('videos.like');
+    Route::post('/videos/{video}/view', [VideoController::class, 'view'])->name('videos.view');
+    Route::post('/videos/{video}/comment', [VideoController::class, 'comment'])->name('videos.comment');
+    Route::post('/videos/{video}/share', [VideoController::class, 'share'])->name('videos.share');
     Route::post('/reels/{reel}/send/{user}', [ReelController::class, 'sendToFriend'])->name('reels.send');
 
     // Chat

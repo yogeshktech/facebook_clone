@@ -36,8 +36,8 @@
 </head>
 <body class="bg-fb-gray min-h-screen">
     @auth
-        @include('layouts.navbar')
         @include('layouts.mobile-nav')
+        @include('layouts.navbar')
         @include('layouts.mobile-menu')
         @include('layouts.pwa-install-modal')
     @endauth
