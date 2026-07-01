@@ -353,9 +353,15 @@
         document.addEventListener('submit', async (e) => {
             const form = e.target;
             const action = form.action || '';
+            let pathname = '';
+            try {
+                pathname = new URL(action).pathname;
+            } catch (err) {
+                pathname = action;
+            }
 
             // --- 1. HANDLE LIKES ---
-            if (action.endsWith('/like') || action.includes('/like/')) {
+            if (pathname.endsWith('/like') || pathname.endsWith('/like/') || pathname.includes('/like/')) {
                 e.preventDefault();
                 const btn = form.querySelector('button[type="submit"]');
                 if (btn) btn.disabled = true;
@@ -415,7 +421,7 @@
             }
 
             // --- 2. HANDLE COMMENTS ---
-            if (action.endsWith('/comment') || action.includes('/comment/')) {
+            if (pathname.endsWith('/comment') || pathname.endsWith('/comment/') || pathname.includes('/comment/')) {
                 e.preventDefault();
                 const btn = form.querySelector('button[type="submit"]');
                 const input = form.querySelector('input[name="content"]');
