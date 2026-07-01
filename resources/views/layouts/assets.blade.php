@@ -354,8 +354,12 @@
             const form = e.target;
             const action = form.action || '';
             let pathname = '';
+            let fetchUrl = action;
             try {
-                pathname = new URL(action).pathname;
+                const urlObj = new URL(action);
+                pathname = urlObj.pathname;
+                urlObj.protocol = window.location.protocol;
+                fetchUrl = urlObj.toString();
             } catch (err) {
                 pathname = action;
             }
@@ -367,7 +371,7 @@
                 if (btn) btn.disabled = true;
 
                 try {
-                    const res = await fetch(action, {
+                    const res = await fetch(fetchUrl, {
                         method: 'POST',
                         headers: {
                             'X-CSRF-TOKEN': csrfToken(),
@@ -430,7 +434,7 @@
                 if (btn) btn.disabled = true;
 
                 try {
-                    const res = await fetch(action, {
+                    const res = await fetch(fetchUrl, {
                         method: 'POST',
                         headers: {
                             'X-CSRF-TOKEN': csrfToken(),
