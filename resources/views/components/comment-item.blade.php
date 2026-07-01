@@ -27,9 +27,11 @@
     </div>
   </div>
 
-  @if(!$comment->parent_id && $comment->relationLoaded('replies') && $comment->replies->count())
-    @foreach($comment->replies as $reply)
-      @include('components.comment-item', ['comment' => $reply, 'post' => $post])
-    @endforeach
-  @endif
+  <div class="replies-container space-y-2" id="replies-container-{{ $comment->id }}">
+    @if(!$comment->parent_id && $comment->relationLoaded('replies') && $comment->replies->count())
+      @foreach($comment->replies as $reply)
+        @include('components.comment-item', ['comment' => $reply, 'post' => $post])
+      @endforeach
+    @endif
+  </div>
 </div>

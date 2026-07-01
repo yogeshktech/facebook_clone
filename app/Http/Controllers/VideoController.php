@@ -32,7 +32,7 @@ class VideoController extends Controller
             ->whereNull('group_id')
             ->whereNull('page_id')
             ->latest()
-            ->paginate(10);
+            ->cursorPaginate(5);
 
         $friends = User::whereIn('id', $friendIds)->orderBy('name')->get();
 
@@ -69,22 +69,29 @@ class VideoController extends Controller
         return view('videos.show', compact('video'));
     }
 
-    public function like(Post $video): RedirectResponse
-{
-    $user = auth()->user();
+    public function like(Post $video): RedirectResponse|JsonResponse
+    {
+        $user = auth()->user();
+        $liked = false;
 
-    if ($video->likes()->where('user_id', $user->id)->exists()) {
-        $video->likes()->where('user_id', $user->id)->delete();
+        if ($video->likes()->where('user_id', $user->id)->exists()) {
+            $video->likes()->where('user_id', $user->id)->delete();
+        } else {
+            $video->likes()->create([
+                'user_id' => $user->id,
+            ]);
+            $liked = true;
+        }
 
-        return back()->with('success', 'Video unliked.');
+        if (request()->expectsJson()) {
+            return response()->json([
+                'liked' => $liked,
+                'likes_count' => $video->likes()->count(),
+            ]);
+        }
+
+        return back()->with('success', $liked ? 'Video liked.' : 'Video unliked.');
     }
-
-    $video->likes()->create([
-        'user_id' => $user->id,
-    ]);
-
-    return back()->with('success', 'Video liked.');
-}
 
     public function view(Post $video): JsonResponse
     {
@@ -100,7 +107,7 @@ class VideoController extends Controller
         ]);
     }
 
-    public function comment(Request $request, Post $video): RedirectResponse
+    public function comment(Request $request, Post $video): RedirectResponse|JsonResponse
     {
         $validated = $request->validate([
             'content' => ['required', 'string', 'max:500'],
@@ -112,6 +119,24 @@ class VideoController extends Controller
         ]);
 
         $video->comments()->save($comment);
+
+        if ($request->expectsJson()) {
+            $comment->load('user');
+            return response()->json([
+                'success' => true,
+                'comments_count' => $video->comments()->count(),
+                'comment' => [
+                    'id' => $comment->id,
+                    'content' => $comment->content,
+                    'created_at_human' => 'Just now',
+                    'user' => [
+                        'name' => $comment->user->name,
+                        'avatar_url' => $comment->user->avatar_url,
+                        'profile_url' => route('profile.show', $comment->user),
+                    ]
+                ]
+            ]);
+        }
 
         return back()->with('success', 'Comment added.');
     }

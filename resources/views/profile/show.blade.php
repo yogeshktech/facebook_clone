@@ -30,6 +30,17 @@
                             </form>
                         @elseif($hasPendingRequest)
                             <button disabled class="btn-secondary opacity-50">Request Sent</button>
+                        @elseif(isset($incomingRequest) && $incomingRequest)
+                            <div class="flex gap-2">
+                                <form action="{{ route('friends.accept', $incomingRequest) }}" method="POST">
+                                    @csrf
+                                    <button type="submit" class="btn-primary">Confirm Request</button>
+                                </form>
+                                <form action="{{ route('friends.reject', $incomingRequest) }}" method="POST">
+                                    @csrf
+                                    <button type="submit" class="btn-secondary">Delete Request</button>
+                                </form>
+                            </div>
                         @else
                             <form action="{{ route('friends.send', $user) }}" method="POST">
                                 @csrf

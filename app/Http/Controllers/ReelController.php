@@ -32,7 +32,7 @@ class ReelController extends Controller
             ->whereNull('group_id')
             ->whereNull('page_id')
             ->latest()
-            ->paginate(10);
+            ->cursorPaginate(5);
 
         $friends = User::whereIn('id', $friendIds)->orderBy('name')->get();
 
@@ -117,7 +117,10 @@ class ReelController extends Controller
         }
 
         if ($request->expectsJson()) {
-            return response()->json(['success' => true]);
+            return response()->json([
+                'success' => true,
+                'comments_count' => $reel->comments()->count()
+            ]);
         }
 
         return back();

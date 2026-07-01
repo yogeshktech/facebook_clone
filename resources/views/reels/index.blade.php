@@ -74,7 +74,7 @@
 </script>
 
     {{-- Reels feed --}}
-    <div class="space-y-4 px-2 sm:px-0 pb-4">
+    <div class="space-y-4 px-2 sm:px-0 pb-4" id="reels-feed-container">
         @forelse($reels as $reel)
         <div class="bg-black rounded-xl overflow-hidden relative" style="height: 70vh; max-height: 600px;" id="reel-{{ $reel->id }}" data-reel-id="{{ $reel->id }}">
             <video src="{{ $reel->media_url }}" class="w-full h-full object-contain reel-video" loop playsinline muted preload="metadata"></video>
@@ -189,9 +189,15 @@
         @endforelse
     </div>
 
-    @if($reels->hasPages())
-        <div class="px-4 pb-8">{{ $reels->links() }}</div>
-    @endif
+    <div id="infinite-scroll-trigger" class="py-6 text-center hidden">
+        <span class="inline-block w-8 h-8 border-3 border-fb-blue border-t-transparent rounded-full animate-spin"></span>
+    </div>
+
+    <div id="pagination-wrapper" class="hidden">
+        @if($reels->hasPages())
+            <div class="px-4 pb-8">{{ $reels->links() }}</div>
+        @endif
+    </div>
 </div>
 
 <script>
@@ -250,35 +256,6 @@ document.addEventListener('DOMContentLoaded', () => {
         video.play().catch(() => {});
     }
 
-    document.querySelectorAll('.reel-sound-btn').forEach(btn => {
-        btn.addEventListener('click', (e) => {
-            e.stopPropagation();
-            reelsSoundOn = !reelsSoundOn;
-            sessionStorage.setItem('reelsSoundOn', reelsSoundOn ? '1' : '0');
-            document.querySelectorAll('[data-reel-id]').forEach(updateSoundUi);
-            if (reelsSoundOn && activeReelEl) {
-                const video = getVideo(activeReelEl);
-                if (video) {
-                    video.muted = false;
-                    video.volume = 1;
-                    video.play().catch(() => {});
-                }
-            }
-        });
-    });
-
-    document.querySelectorAll('.reel-video').forEach(video => {
-        video.addEventListener('click', () => {
-            const container = video.closest('[data-reel-id]');
-            if (!container) return;
-            if (video.paused) {
-                playReel(container);
-            } else {
-                video.pause();
-            }
-        });
-    });
-
     async function recordReelView(reelId) {
         if (recordedViews.has(reelId)) return;
         recordedViews.add(reelId);
@@ -314,10 +291,87 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }, { threshold: 0.65 });
 
-    document.querySelectorAll('[data-reel-id]').forEach(el => {
+    function initReelListeners(el) {
         updateSoundUi(el);
         observer.observe(el);
-    });
+
+        el.querySelector('.reel-sound-btn')?.addEventListener('click', (e) => {
+            e.stopPropagation();
+            reelsSoundOn = !reelsSoundOn;
+            sessionStorage.setItem('reelsSoundOn', reelsSoundOn ? '1' : '0');
+            document.querySelectorAll('[data-reel-id]').forEach(updateSoundUi);
+            if (reelsSoundOn && activeReelEl) {
+                const video = getVideo(activeReelEl);
+                if (video) {
+                    video.muted = false;
+                    video.volume = 1;
+                    video.play().catch(() => {});
+                }
+            }
+        });
+
+        getVideo(el)?.addEventListener('click', () => {
+            const video = getVideo(el);
+            if (!video) return;
+            if (video.paused) {
+                playReel(el);
+            } else {
+                video.pause();
+            }
+        });
+    }
+
+    document.querySelectorAll('[data-reel-id]').forEach(initReelListeners);
+
+    // Infinite scroll
+    let nextPageUrl = '{{ $reels->nextPageUrl() }}';
+    let isLoading = false;
+    const feedContainer = document.getElementById('reels-feed-container');
+    const trigger = document.getElementById('infinite-scroll-trigger');
+
+    if (nextPageUrl) {
+        trigger.classList.remove('hidden');
+
+        const scrollObserver = new IntersectionObserver(async (entries) => {
+            if (entries[0].isIntersecting && !isLoading && nextPageUrl) {
+                isLoading = true;
+                trigger.classList.remove('hidden');
+
+                try {
+                    const res = await fetch(nextPageUrl, {
+                        headers: {
+                            'X-Requested-With': 'XMLHttpRequest'
+                        }
+                    });
+                    if (!res.ok) throw new Error('Failed to fetch');
+
+                    const html = await res.text();
+                    const parser = new DOMParser();
+                    const doc = parser.parseFromString(html, 'text/html');
+
+                    const newReels = doc.querySelectorAll('#reels-feed-container [data-reel-id]');
+                    newReels.forEach(reel => {
+                        feedContainer.appendChild(reel);
+                        initReelListeners(reel);
+                    });
+
+                    const nextLink = doc.querySelector('[rel="next"]');
+                    nextPageUrl = nextLink ? nextLink.getAttribute('href') : null;
+
+                    if (!nextPageUrl) {
+                        trigger.classList.add('hidden');
+                        scrollObserver.unobserve(trigger);
+                    }
+                } catch (e) {
+                    console.error('Error loading more reels:', e);
+                } finally {
+                    isLoading = false;
+                }
+            }
+        }, { rootMargin: '200px' });
+
+        scrollObserver.observe(trigger);
+    }
 });
 </script>
 @endsection

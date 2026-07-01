@@ -18,7 +18,37 @@
                 <img src="{{ $user->avatar_url }}" class="w-12 h-12 rounded-full object-cover">
                 <a href="{{ route('profile.show', $user) }}" class="flex-1 font-semibold hover:underline">{{ $user->name }}</a>
                 @if($user->id !== auth()->id())
-                <form action="{{ route('friends.send', $user) }}" method="POST">@csrf<button class="btn-primary text-sm px-3 py-1">Add Friend</button></form>
+                    @if(auth()->user()->isFriendsWith($user))
+                        <span class="text-gray-500 text-sm font-medium">Friends</span>
+                    @elseif(auth()->user()->hasPendingRequestTo($user))
+                        <span class="text-gray-500 text-sm font-medium italic">Request Sent</span>
+                    @elseif($user->hasPendingRequestTo(auth()->user()))
+                        @php
+                            $friendship = \App\Models\Friendship::where('user_id', $user->id)
+                                ->where('friend_id', auth()->id())
+                                ->where('status', 'pending')
+                                ->first();
+                        @endphp
+                        @if($friendship)
+                            <div class="flex gap-2">
+                                <form action="{{ route('friends.accept', $friendship) }}" method="POST">
+                                    @csrf
+                                    <button class="bg-fb-blue text-white text-xs px-2.5 py-1 rounded font-semibold hover:bg-fb-blue-dark transition">Accept</button>
+                                </form>
+                                <form action="{{ route('friends.reject', $friendship) }}" method="POST">
+                                    @csrf
+                                    <button class="bg-gray-200 text-gray-800 text-xs px-2.5 py-1 rounded font-semibold hover:bg-gray-300 transition">Decline</button>
+                                </form>
+                            </div>
+                        @else
+                            <span class="text-gray-500 text-sm font-medium">Pending Response</span>
+                        @endif
+                    @else
+                        <form action="{{ route('friends.send', $user) }}" method="POST">
+                            @csrf
+                            <button class="btn-primary text-sm px-3 py-1">Add Friend</button>
+                        </form>
+                    @endif
                 @endif
             </div>
             @endforeach

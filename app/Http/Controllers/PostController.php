@@ -108,33 +108,41 @@ class PostController extends Controller
         return response()->json(['likers' => $likers]);
     }
 
-    public function like(Post $post): RedirectResponse
+    public function like(Post $post): RedirectResponse|JsonResponse
     {
         $existing = Like::where('user_id', auth()->id())
             ->where('likeable_id', $post->id)
             ->where('likeable_type', Post::class)
             ->first();
 
+        $liked = false;
+
         if ($existing) {
             $existing->delete();
+        } else {
+            Like::create([
+                'user_id' => auth()->id(),
+                'likeable_id' => $post->id,
+                'likeable_type' => Post::class,
+            ]);
+            $liked = true;
 
-            return back();
+            if ($post->user_id !== auth()->id()) {
+                NotificationService::postInteraction($post->user, auth()->user(), $post, 'like');
+            }
         }
 
-        Like::create([
-            'user_id' => auth()->id(),
-            'likeable_id' => $post->id,
-            'likeable_type' => Post::class,
-        ]);
-
-        if ($post->user_id !== auth()->id()) {
-            NotificationService::postInteraction($post->user, auth()->user(), $post, 'like');
+        if (request()->expectsJson()) {
+            return response()->json([
+                'liked' => $liked,
+                'likes_count' => $post->likes()->count(),
+            ]);
         }
 
         return back();
     }
 
-    public function comment(Request $request, Post $post): RedirectResponse
+    public function comment(Request $request, Post $post): RedirectResponse|JsonResponse
     {
         $validated = $request->validate([
             'content' => ['required', 'string', 'max:1000'],
@@ -167,10 +175,13 @@ class PostController extends Controller
             ->exists();
 
         if ($isDuplicate) {
+            if ($request->expectsJson()) {
+                return response()->json(['error' => 'Duplicate comment.'], 422);
+            }
             return back();
         }
 
-        Comment::create([
+        $comment = Comment::create([
             'user_id' => auth()->id(),
             'post_id' => $post->id,
             'parent_id' => $parentId,
@@ -179,6 +190,25 @@ class PostController extends Controller
 
         if ($post->user_id !== auth()->id()) {
             NotificationService::postInteraction($post->user, auth()->user(), $post, 'comment');
+        }
+
+        if ($request->expectsJson()) {
+            $comment->load('user');
+            return response()->json([
+                'success' => true,
+                'comments_count' => $post->comments()->count(),
+                'comment' => [
+                    'id' => $comment->id,
+                    'content' => $comment->content,
+                    'parent_id' => $comment->parent_id,
+                    'created_at_human' => 'Just now',
+                    'user' => [
+                        'name' => $comment->user->name,
+                        'avatar_url' => $comment->user->avatar_url,
+                        'profile_url' => route('profile.show', $comment->user),
+                    ]
+                ]
+            ]);
         }
 
         return back();

@@ -74,7 +74,7 @@
 </script>
 
     {{-- Reels feed --}}
-    <div class="space-y-4 px-2 sm:px-0 pb-4">
+    <div class="space-y-4 px-2 sm:px-0 pb-4" id="videos-feed-container">
         @forelse($videos as $video)
         <div class="bg-black rounded-xl overflow-hidden relative" style="height: 70vh; max-height: 600px;" id="video-{{ $video->id }}" data-video-id="{{ $video->id }}">
             <video src="{{ $video->media_url }}" class="w-full h-full object-contain video-video" playsinline muted preload="metadata"></video>
@@ -201,9 +201,15 @@
         @endforelse
     </div>
 
-    @if($videos->hasPages())
-        <div class="px-4 pb-8">{{ $videos->links() }}</div>
-    @endif
+    <div id="infinite-scroll-trigger" class="py-6 text-center hidden">
+        <span class="inline-block w-8 h-8 border-3 border-fb-blue border-t-transparent rounded-full animate-spin"></span>
+    </div>
+
+    <div id="pagination-wrapper" class="hidden">
+        @if($videos->hasPages())
+            <div class="px-4 pb-8">{{ $videos->links() }}</div>
+        @endif
+    </div>
 </div>
 
 <script>
@@ -261,35 +267,6 @@ document.addEventListener('DOMContentLoaded', () => {
         updateSoundUi(container);
         video.play().catch(() => {});
     }
-
-    document.querySelectorAll('.video-sound-btn').forEach(btn => {
-        btn.addEventListener('click', (e) => {
-            e.stopPropagation();
-            videoSoundOn = !videoSoundOn;
-            sessionStorage.setItem('videoSoundOn', videoSoundOn ? '1' : '0');
-            document.querySelectorAll('[data-video-id]').forEach(updateSoundUi);
-            if (videoSoundOn && activeVideoEl) {
-                const video = getVideoTag(activeVideoEl);
-                if (video) {
-                    video.muted = false;
-                    video.volume = 1;
-                    video.play().catch(() => {});
-                }
-            }
-        });
-    });
-
-    document.querySelectorAll('.video-video').forEach(video => {
-        video.addEventListener('click', () => {
-            const container = video.closest('[data-video-id]');
-            if (!container) return;
-            if (video.paused) {
-                playVideo(container);
-            } else {
-                video.pause();
-            }
-        });
-    });
 
     function formatTime(sec) {
         if (!isFinite(sec) || sec < 0) sec = 0;
@@ -363,8 +340,6 @@ document.addEventListener('DOMContentLoaded', () => {
         bar.addEventListener('touchend', () => { isDragging = false; });
     }
 
-    document.querySelectorAll('[data-video-id]').forEach(setupProgressBar);
-
     async function recordVideoView(videoId) {
         if (recordedViews.has(videoId)) return;
         recordedViews.add(videoId);
@@ -400,10 +375,88 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }, { threshold: 0.65 });
 
-    document.querySelectorAll('[data-video-id]').forEach(el => {
+    function initVideoListeners(el) {
         updateSoundUi(el);
+        setupProgressBar(el);
         observer.observe(el);
-    });
+
+        el.querySelector('.video-sound-btn')?.addEventListener('click', (e) => {
+            e.stopPropagation();
+            videoSoundOn = !videoSoundOn;
+            sessionStorage.setItem('videoSoundOn', videoSoundOn ? '1' : '0');
+            document.querySelectorAll('[data-video-id]').forEach(updateSoundUi);
+            if (videoSoundOn && activeVideoEl) {
+                const video = getVideoTag(activeVideoEl);
+                if (video) {
+                    video.muted = false;
+                    video.volume = 1;
+                    video.play().catch(() => {});
+                }
+            }
+        });
+
+        getVideoTag(el)?.addEventListener('click', () => {
+            const video = getVideoTag(el);
+            if (!video) return;
+            if (video.paused) {
+                playVideo(el);
+            } else {
+                video.pause();
+            }
+        });
+    }
+
+    document.querySelectorAll('[data-video-id]').forEach(initVideoListeners);
+
+    // Infinite scroll
+    let nextPageUrl = '{{ $videos->nextPageUrl() }}';
+    let isLoading = false;
+    const feedContainer = document.getElementById('videos-feed-container');
+    const trigger = document.getElementById('infinite-scroll-trigger');
+
+    if (nextPageUrl) {
+        trigger.classList.remove('hidden');
+
+        const scrollObserver = new IntersectionObserver(async (entries) => {
+            if (entries[0].isIntersecting && !isLoading && nextPageUrl) {
+                isLoading = true;
+                trigger.classList.remove('hidden');
+
+                try {
+                    const res = await fetch(nextPageUrl, {
+                        headers: {
+                            'X-Requested-With': 'XMLHttpRequest'
+                        }
+                    });
+                    if (!res.ok) throw new Error('Failed to fetch');
+
+                    const html = await res.text();
+                    const parser = new DOMParser();
+                    const doc = parser.parseFromString(html, 'text/html');
+
+                    const newVideos = doc.querySelectorAll('#videos-feed-container [data-video-id]');
+                    newVideos.forEach(video => {
+                        feedContainer.appendChild(video);
+                        initVideoListeners(video);
+                    });
+
+                    const nextLink = doc.querySelector('[rel="next"]');
+                    nextPageUrl = nextLink ? nextLink.getAttribute('href') : null;
+
+                    if (!nextPageUrl) {
+                        trigger.classList.add('hidden');
+                        scrollObserver.unobserve(trigger);
+                    }
+                } catch (e) {
+                    console.error('Error loading more videos:', e);
+                } finally {
+                    isLoading = false;
+                }
+            }
+        }, { rootMargin: '200px' });
+
+        scrollObserver.observe(trigger);
+    }
 });
 </script>
 @endsection

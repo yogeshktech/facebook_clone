@@ -3,6 +3,15 @@
 @section('title', 'Chat')
 
 @section('content')
+<style>
+    @keyframes typing-bounce {
+        0%, 100% { transform: translateY(0); }
+        50% { transform: translateY(-4px); }
+    }
+    .typing-dot {
+        animation: typing-bounce 1s infinite ease-in-out;
+    }
+</style>
 @php $otherUser = $conversation->users->where('id', '!=', auth()->id())->first(); @endphp
 <div class="max-w-2xl mx-auto p-2 sm:p-4 pb-2">
     <div class="bg-white rounded-lg shadow flex flex-col h-[calc(100dvh-9.5rem)] md:h-[calc(100dvh-8rem)]">
@@ -45,6 +54,48 @@
     let lastMessageId = 0;
     let isNearBottom = true;
     let sending = false;
+    let receiveTypingTimeout = null;
+    let typingTimeout = null;
+    let isCurrentlyTyping = false;
+
+    // Create typing indicator element
+    const typingBubble = document.createElement('div');
+    typingBubble.id = 'typing-indicator';
+    typingBubble.className = 'flex justify-start hidden mb-3';
+    typingBubble.innerHTML = `
+        <div class="flex items-center gap-1.5 px-3.5 py-2.5 bg-fb-gray text-gray-500 rounded-2xl rounded-bl-sm shadow-sm border border-gray-100 flex-row">
+            <div class="flex gap-1 items-center">
+                <span class="w-1.5 h-1.5 bg-gray-500 rounded-full typing-dot" style="animation-delay: 0ms;"></span>
+                <span class="w-1.5 h-1.5 bg-gray-500 rounded-full typing-dot" style="animation-delay: 150ms;"></span>
+                <span class="w-1.5 h-1.5 bg-gray-500 rounded-full typing-dot" style="animation-delay: 300ms;"></span>
+            </div>
+            <span class="text-xs font-normal text-gray-500 ml-1.5">typing...</span>
+        </div>
+    `;
+    container.appendChild(typingBubble);
+
+    function formatTime(dateString) {
+        const d = new Date(dateString);
+        let hours = d.getHours();
+        const minutes = String(d.getMinutes()).padStart(2, '0');
+        const ampm = hours >= 12 ? 'PM' : 'AM';
+        hours = hours % 12;
+        hours = hours ? hours : 12;
+        return `${hours}:${minutes} ${ampm}`;
+    }
+
+    function sendTypingWhisper(isTyping) {
+        if (!window.Echo) return;
+        try {
+            window.Echo.private(`conversation.${conversationId}`)
+                .whisper('typing', {
+                    user_id: authUserId,
+                    typing: isTyping
+                });
+        } catch (e) {
+            console.error('Failed to send typing whisper', e);
+        }
+    }
 
     async function prepareFile(file) {
         if (window.prepareMediaFile) {
@@ -104,6 +155,12 @@
 
             input.value = '';
             if (mediaInput) mediaInput.value = '';
+
+            if (isCurrentlyTyping) {
+                isCurrentlyTyping = false;
+                clearTimeout(typingTimeout);
+                sendTypingWhisper(false);
+            }
 
             const msg = data.message;
             renderMessage({
@@ -184,7 +241,17 @@
                 </p>
             </div>`;
 
-        container.appendChild(wrap);
+        if (msg.user_id !== authUserId) {
+            typingBubble.classList.add('hidden');
+            clearTimeout(receiveTypingTimeout);
+        }
+
+        if (typingBubble.parentNode === container) {
+            container.insertBefore(wrap, typingBubble);
+        } else {
+            container.appendChild(wrap);
+        }
+
         lastMessageId = Math.max(lastMessageId, msg.id);
     }
 
@@ -218,12 +285,80 @@
         } catch (e) {}
     }
 
-    setInterval(fetchNewMessages, 2000);
+    let pollingInterval = setInterval(fetchNewMessages, 2000);
+
+    if (window.Echo) {
+        clearInterval(pollingInterval);
+        pollingInterval = setInterval(fetchNewMessages, 15000);
+
+        try {
+            window.Echo.private(`conversation.${conversationId}`)
+                .listen('.message.sent', (data) => {
+                    if (document.getElementById('msg-' + data.id)) return;
+
+                    renderMessage({
+                        id: data.id,
+                        body: data.body,
+                        media_url: data.media_url,
+                        media_type: data.media_type,
+                        user_id: data.user.id,
+                        time: formatTime(data.created_at),
+                        status: 'delivered',
+                    });
+
+                    typingBubble.classList.add('hidden');
+                    clearTimeout(receiveTypingTimeout);
+
+                    if (isNearBottom) scrollToBottom();
+                    fetchNewMessages();
+                })
+                .listenForWhisper('typing', (e) => {
+                    if (e.user_id !== authUserId) {
+                        if (e.typing) {
+                            typingBubble.classList.remove('hidden');
+                            if (isNearBottom) scrollToBottom();
+
+                            clearTimeout(receiveTypingTimeout);
+                            receiveTypingTimeout = setTimeout(() => {
+                                typingBubble.classList.add('hidden');
+                            }, 5000);
+                        } else {
+                            clearTimeout(receiveTypingTimeout);
+                            typingBubble.classList.add('hidden');
+                        }
+                    }
+                });
+        } catch (e) {
+            console.error('Failed to bind Echo listeners', e);
+        }
+    }
+
     fetchNewMessages();
 
     form.addEventListener('submit', async function (e) {
         e.preventDefault();
         await sendMessage();
+    });
+
+    input.addEventListener('input', () => {
+        const hasText = input.value.trim().length > 0;
+        if (hasText) {
+            if (!isCurrentlyTyping) {
+                isCurrentlyTyping = true;
+                sendTypingWhisper(true);
+            }
+            clearTimeout(typingTimeout);
+            typingTimeout = setTimeout(() => {
+                isCurrentlyTyping = false;
+                sendTypingWhisper(false);
+            }, 3000);
+        } else {
+            if (isCurrentlyTyping) {
+                isCurrentlyTyping = false;
+                clearTimeout(typingTimeout);
+                sendTypingWhisper(false);
+            }
+        }
     });
 
     mediaInput?.addEventListener('change', async function () {

@@ -27,21 +27,25 @@
 
   {{-- Stats --}}
   <div class="flex items-center justify-between text-sm text-gray-500 py-2 border-b border-gray-100">
-    @if($post->likes_count > 0)
-      <button type="button" onclick="openLikersModal({{ $post->id }})" class="hover:underline cursor-pointer text-left">
-        {{ $post->likes_count }} {{ $post->likes_count === 1 ? 'like' : 'likes' }}
-      </button>
-    @else
-      <span>0 likes</span>
-    @endif
-    <span>{{ $post->comments_count }} comments · {{ $post->shares_count }} shares</span>
+    <div class="likes-count-wrapper hover:underline cursor-pointer text-left" data-post-id="{{ $post->id }}">
+      @if($post->likes_count > 0)
+        <button type="button" onclick="openLikersModal({{ $post->id }})" class="hover:underline cursor-pointer text-left">
+          {{ $post->likes_count }} {{ $post->likes_count === 1 ? 'like' : 'likes' }}
+        </button>
+      @else
+        <span>0 likes</span>
+      @endif
+    </div>
+    <span>
+      <span class="comments-count-label" data-post-id="{{ $post->id }}">{{ $post->comments_count }}</span> comments · {{ $post->shares_count }} shares
+    </span>
   </div>
 
   {{-- Actions --}}
   <div class="flex items-center justify-around py-1 border-b border-gray-100">
-    <form action="{{ route('posts.like', $post) }}" method="POST" class="flex-1">
+    <form action="{{ route('posts.like', $post) }}" method="POST" class="flex-1 like-form" data-post-id="{{ $post->id }}">
       @csrf
-      <button type="submit" class="w-full flex items-center justify-center gap-2 py-2 rounded-lg hover:bg-gray-100 {{ $post->is_liked ? 'text-fb-blue' : 'text-gray-600' }}">
+      <button type="submit" class="like-btn w-full flex items-center justify-center gap-2 py-2 rounded-lg hover:bg-gray-100 {{ $post->is_liked ? 'text-fb-blue' : 'text-gray-600' }}">
         <svg class="w-5 h-5" fill="{{ $post->is_liked ? 'currentColor' : 'none' }}" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14 10h4.764a2 2 0 011.789 2.894l-3.5 7A2 2 0 0115.263 21h-4.017c-.163 0-.326-.02-.485-.06L7 20m7-10V5a2 2 0 00-2-2h-.095c-.5 0-.905.405-.905.905 0 .714-.211 1.412-.608 2.006L7 11v9m7-10h-2M7 20H5a2 2 0 01-2-2v-6a2 2 0 012-2h2.5"/></svg>
         Like
       </button>
@@ -108,15 +112,13 @@
   </div>
 
   {{-- Comments --}}
-  @if($post->comments->count())
-    <div class="mt-3 space-y-3">
-      @foreach($post->comments as $comment)
-        @include('components.comment-item', ['comment' => $comment, 'post' => $post])
-      @endforeach
-    </div>
-  @endif
+  <div class="mt-3 space-y-3 comments-container" id="comments-container-{{ $post->id }}">
+    @foreach($post->comments as $comment)
+      @include('components.comment-item', ['comment' => $comment, 'post' => $post])
+    @endforeach
+  </div>
 
-  <form action="{{ route('posts.comment', $post) }}" method="POST" class="mt-3 flex gap-2 hidden comment-form" id="comment-form-{{ $post->id }}">
+  <form action="{{ route('posts.comment', $post) }}" method="POST" class="mt-3 flex gap-2 hidden comment-form" id="comment-form-{{ $post->id }}" data-post-id="{{ $post->id }}">
     @csrf
     <img src="{{ auth()->user()->avatar_url }}" alt="" class="w-8 h-8 rounded-full object-cover">
     <input type="text" name="content" placeholder="Write a comment..." required

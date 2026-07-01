@@ -24,11 +24,15 @@ class ProfileController extends Controller
 
         $isFriend = $authUser->isFriendsWith($user);
         $hasPendingRequest = $authUser->hasPendingRequestTo($user);
+        $incomingRequest = \App\Models\Friendship::where('user_id', $user->id)
+            ->where('friend_id', $authUser->id)
+            ->where('status', 'pending')
+            ->first();
         $isFollowing = $authUser->isFollowing($user);
         $friendsCount = $this->friendsCount($user);
 
         return view('profile.show', compact(
-            'user', 'posts', 'isFriend', 'hasPendingRequest', 'isFollowing', 'friendsCount'
+            'user', 'posts', 'isFriend', 'hasPendingRequest', 'incomingRequest', 'isFollowing', 'friendsCount'
         ));
     }
 
