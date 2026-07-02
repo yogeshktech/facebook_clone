@@ -10,6 +10,7 @@ use App\Models\Message;
 use App\Models\Post;
 use App\Models\User;
 use App\Services\NotificationService;
+use App\Services\ContentModerationService;
 use App\Support\MediaStorage;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
@@ -46,8 +47,16 @@ class ReelController extends Controller
             'content' => ['nullable', 'string', 'max:500'],
         ]);
 
+        if (ContentModerationService::isProfane($validated['content'] ?? '')) {
+            return back()->with('error', 'Upload rejected: Inappropriate language detected in description.');
+        }
+
+        $file = $request->file('media');
+        if (ContentModerationService::isAdult($file)) {
+            return back()->with('error', 'Upload rejected: Inappropriate or adult content detected in reel.');
+        }
+
         try {
-            $file = $request->file('media');
             $mediaPath = MediaStorage::store($file, 'reels');
 
             Post::create([

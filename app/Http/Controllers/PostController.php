@@ -10,6 +10,7 @@ use App\Models\Message;
 use App\Models\Post;
 use App\Models\User;
 use App\Services\NotificationService;
+use App\Services\ContentModerationService;
 use App\Support\MediaStorage;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
@@ -25,6 +26,17 @@ class PostController extends Controller
             'group_id' => ['nullable', 'integer', 'exists:groups,id'],
             'page_id' => ['nullable', 'integer', 'exists:pages,id'],
         ]);
+
+        if (ContentModerationService::isProfane($validated['content'] ?? '')) {
+            return $this->storeResponse($request, false, 'Upload rejected: Inappropriate language detected in text.');
+        }
+
+        if ($request->hasFile('media')) {
+            $file = $request->file('media');
+            if (ContentModerationService::isAdult($file)) {
+                return $this->storeResponse($request, false, 'Upload rejected: Inappropriate or adult content detected.');
+            }
+        }
 
         $type = 'text';
         $mediaPath = null;

@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Models\Story;
 use App\Support\MediaStorage;
+use App\Services\ContentModerationService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -31,8 +32,16 @@ class StoryController extends Controller
             'caption' => ['nullable', 'string', 'max:500'],
         ]);
 
+        if (ContentModerationService::isProfane($validated['caption'] ?? '')) {
+            return back()->with('error', 'Upload rejected: Inappropriate language detected in caption.');
+        }
+
+        $file = $request->file('media');
+        if (ContentModerationService::isAdult($file)) {
+            return back()->with('error', 'Upload rejected: Inappropriate or adult content detected in media.');
+        }
+
         try {
-            $file = $request->file('media');
             $mediaType = MediaStorage::mediaType($file);
 
             Story::create([

@@ -60,4 +60,9 @@ return [
         'measurement_id' => env('FIREBASE_MEASUREMENT_ID'),
     ],
 
+    'sightengine' => [
+        'api_user' => env('SIGHTENGINE_API_USER'),
+        'api_secret' => env('SIGHTENGINE_API_SECRET'),
+    ],
+
 ];
