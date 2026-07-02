@@ -34,6 +34,9 @@ class MessageSent implements ShouldBroadcast
         return [
             'id' => $this->message->id,
             'body' => $this->message->body,
+            'message_type' => $this->message->message_type ?? 'text',
+            'call_status' => $this->message->call_status,
+            'call_is_video' => $this->message->call_is_video,
             'media_url' => $this->message->media_url,
             'media_type' => $this->message->media_type,
             'user' => [
@@ -41,6 +44,7 @@ class MessageSent implements ShouldBroadcast
                 'name' => $this->message->user->name,
                 'avatar_url' => $this->message->user->avatar_url,
             ],
+            'user_id' => $this->message->user_id,
             'created_at' => $this->message->created_at->toISOString(),
         ];
     }

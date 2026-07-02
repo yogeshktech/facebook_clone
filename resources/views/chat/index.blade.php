@@ -45,10 +45,14 @@
                         <p class="font-semibold">{{ $otherUser?->name ?? 'Group Chat' }}</p>
                         @if($lastMessage)
                             <p class="text-sm text-gray-500 truncate">
-                                @if($lastMessage->media_path)
-                                    {{ $lastMessage->media_type === 'video' ? '🎥 Video' : '📷 Photo' }}
+                                @if($lastMessage->isCall())
+                                    {{ $lastMessage->callLabelFor(auth()->id()) }}
+                                @else
+                                    @if($lastMessage->media_path)
+                                        {{ $lastMessage->media_type === 'video' ? '🎥 Video' : '📷 Photo' }}
+                                    @endif
+                                    {{ $lastMessage->body }}
                                 @endif
-                                {{ $lastMessage->body }}
                             </p>
                         @else
                             <p class="text-sm text-gray-400 italic">Start chatting...</p>

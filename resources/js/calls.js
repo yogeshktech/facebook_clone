@@ -113,6 +113,11 @@ class WebRTCCallManager {
         this.isCalling = false;
         this.isCallActive = false;
         this.incomingOfferSdp = null;
+        this.callId = null;
+        this.wasAnswered = false;
+        this.callerUserId = null;
+        this.ringTimeout = null;
+        this.dialTimeout = null;
 
         this.overlay = null;
         this.avatar = null;
@@ -216,6 +221,45 @@ class WebRTCCallManager {
         ];
     }
 
+    callMeta(extra = {}) {
+        return {
+            call_id: this.callId,
+            caller_id: this.callerUserId,
+            is_video: this.isVideo,
+            was_answered: this.wasAnswered,
+            ...extra,
+        };
+    }
+
+    clearCallTimeouts() {
+        if (this.ringTimeout) {
+            clearTimeout(this.ringTimeout);
+            this.ringTimeout = null;
+        }
+        if (this.dialTimeout) {
+            clearTimeout(this.dialTimeout);
+            this.dialTimeout = null;
+        }
+    }
+
+    startRingTimeout() {
+        this.clearCallTimeouts();
+        this.ringTimeout = setTimeout(() => {
+            if (this.isIncoming && !this.wasAnswered) {
+                this.declineCall('missed');
+            }
+        }, 45000);
+    }
+
+    startDialTimeout() {
+        this.clearCallTimeouts();
+        this.dialTimeout = setTimeout(() => {
+            if (this.isCalling && !this.wasAnswered) {
+                this.hangupCall();
+            }
+        }, 60000);
+    }
+
     async sendSignal(type, data = null) {
         if (!this.remoteUserId) return false;
 
@@ -230,7 +274,9 @@ class WebRTCCallManager {
                 body: JSON.stringify({
                     to_user_id: this.remoteUserId,
                     type,
-                    data,
+                    data: ['hangup', 'decline'].includes(type)
+                        ? this.callMeta(data || {})
+                        : data,
                 }),
             });
 
@@ -273,6 +319,10 @@ class WebRTCCallManager {
         this.isCalling = true;
         this.remoteUserId = remoteUserId;
         this.isVideo = isVideo;
+        this.callId = crypto.randomUUID();
+        this.wasAnswered = false;
+        this.callerUserId = window.authUserId;
+        this.startDialTimeout();
 
         this.showOverlay();
         this.setPeerInfo(peerInfo);
@@ -300,7 +350,12 @@ class WebRTCCallManager {
             const offer = await this.peerConnection.createOffer();
             await this.peerConnection.setLocalDescription(offer);
 
-            const sent = await this.sendSignal('offer', { sdp: offer.sdp, isVideo });
+            const sent = await this.sendSignal('offer', {
+                sdp: offer.sdp,
+                isVideo,
+                call_id: this.callId,
+                caller_id: this.callerUserId,
+            });
             if (!sent) {
                 throw new Error('Could not reach call server.');
             }
@@ -337,6 +392,8 @@ class WebRTCCallManager {
                 this.status.textContent = 'Connected';
                 this.isCallActive = true;
                 this.isCalling = false;
+                this.wasAnswered = true;
+                this.clearCallTimeouts();
                 this.toneGen.stop();
                 this.updateCallUI();
             } else if (
@@ -355,7 +412,12 @@ class WebRTCCallManager {
                 case 'offer':
                     if (this.isCallActive || this.isCalling || this.isIncoming) {
                         this.remoteUserId = from_user.id;
-                        await this.sendSignal('decline', { reason: 'busy' });
+                        await this.sendSignal('decline', {
+                            reason: 'busy',
+                            call_id: data.call_id,
+                            caller_id: from_user.id,
+                            is_video: !!data.isVideo,
+                        });
                         this.remoteUserId = null;
                         return;
                     }
@@ -363,6 +425,10 @@ class WebRTCCallManager {
                     this.remoteUserId = from_user.id;
                     this.isVideo = !!data.isVideo;
                     this.incomingOfferSdp = data.sdp;
+                    this.callId = data.call_id || crypto.randomUUID();
+                    this.callerUserId = from_user.id;
+                    this.wasAnswered = false;
+                    this.startRingTimeout();
 
                     this.showOverlay();
                     this.setPeerInfo({ name: from_user.name, avatar: from_user.avatar_url });
@@ -456,9 +522,9 @@ class WebRTCCallManager {
         }
     }
 
-    async declineCall() {
+    async declineCall(reason = 'declined') {
         if (!this.remoteUserId) return;
-        await this.sendSignal('decline');
+        await this.sendSignal('decline', { reason });
         this.cleanup();
     }
 
@@ -512,10 +578,14 @@ class WebRTCCallManager {
 
     cleanup() {
         this.toneGen.stop();
+        this.clearCallTimeouts();
         this.isIncoming = false;
         this.isCalling = false;
         this.isCallActive = false;
         this.incomingOfferSdp = null;
+        this.callId = null;
+        this.wasAnswered = false;
+        this.callerUserId = null;
 
         if (this.peerConnection) {
             this.peerConnection.close();

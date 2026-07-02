@@ -176,6 +176,10 @@ class ChatController extends Controller
         $payload = [
             'id' => $message->id,
             'body' => $message->body,
+            'message_type' => $message->message_type ?? 'text',
+            'call_status' => $message->call_status,
+            'call_is_video' => $message->call_is_video,
+            'call_label' => $message->isCall() ? $message->callLabelFor(auth()->id()) : null,
             'media_url' => $message->media_url,
             'media_type' => $message->media_type,
             'user_id' => $message->user_id,

@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Events\CallSignalingEvent;
 use App\Models\Conversation;
 use App\Models\User;
+use App\Services\CallHistoryService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
@@ -32,6 +33,13 @@ class CallSignalingController extends Controller
             $validated['type'],
             $validated['data'] ?? []
         ))->toOthers();
+
+        app(CallHistoryService::class)->recordFromSignal(
+            auth()->id(),
+            (int) $validated['to_user_id'],
+            $validated['type'],
+            $validated['data'] ?? []
+        );
 
         return response()->json(['success' => true]);
     }

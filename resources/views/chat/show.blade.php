@@ -232,8 +232,59 @@
         Object.entries(statuses).forEach(([id, status]) => updateMessageStatus(id, status));
     }
 
+    function callLabelForViewer(msg) {
+        if (msg.call_label) {
+            return msg.call_label;
+        }
+
+        const video = msg.call_is_video ? 'Video' : 'Voice';
+        const isCaller = msg.user_id === authUserId;
+
+        if (msg.call_status === 'declined') {
+            return isCaller ? `${video} call declined` : `Declined ${video} call`;
+        }
+
+        if (msg.call_status === 'unanswered') {
+            return isCaller ? `${video} call · No answer` : `Missed ${video} call`;
+        }
+
+        return `${video} call`;
+    }
+
+    function renderCallMessage(msg) {
+        if (document.getElementById('msg-' + msg.id)) return;
+
+        const wrap = document.createElement('div');
+        wrap.id = 'msg-' + msg.id;
+        wrap.className = 'flex justify-center my-2';
+
+        const icon = msg.call_is_video ? '📹' : '📞';
+        const label = callLabelForViewer(msg);
+        const missed = msg.call_status === 'unanswered' && msg.user_id !== authUserId;
+
+        wrap.innerHTML = `
+            <div class="px-3 py-1.5 rounded-full text-xs flex items-center gap-1.5 ${missed ? 'bg-red-50 text-red-600' : 'bg-gray-200/80 text-gray-600'}">
+                <span>${icon}</span>
+                <span>${escapeHtml(label)}</span>
+                <span class="opacity-60">· ${msg.time || ''}</span>
+            </div>`;
+
+        if (typingBubble.parentNode === container) {
+            container.insertBefore(wrap, typingBubble);
+        } else {
+            container.appendChild(wrap);
+        }
+
+        lastMessageId = Math.max(lastMessageId, msg.id);
+    }
+
     function renderMessage(msg) {
         if (document.getElementById('msg-' + msg.id)) return;
+
+        if (msg.message_type === 'call') {
+            renderCallMessage(msg);
+            return;
+        }
 
         const isSender = msg.user_id === authUserId;
         const wrap = document.createElement('div');
@@ -323,9 +374,12 @@
                     renderMessage({
                         id: data.id,
                         body: data.body,
+                        message_type: data.message_type || 'text',
+                        call_status: data.call_status,
+                        call_is_video: data.call_is_video,
                         media_url: data.media_url,
                         media_type: data.media_type,
-                        user_id: data.user.id,
+                        user_id: data.user_id ?? data.user?.id,
                         time: formatTime(data.created_at),
                         status: 'delivered',
                     });
