@@ -629,6 +629,9 @@
             this.audioPulse = null;
             this.localVideo = null;
             this.remoteVideo = null;
+            this.remoteAudio = null;
+            this._endingCall = false;
+            this._disconnectTimer = null;
 
             this.declineBtn = null;
             this.acceptBtn = null;
@@ -648,6 +651,7 @@
             this.audioPulse = document.getElementById('call-audio-pulse');
             this.localVideo = document.getElementById('local-video');
             this.remoteVideo = document.getElementById('remote-video');
+            this.remoteAudio = document.getElementById('remote-audio');
 
             this.declineBtn = document.getElementById('decline-call-btn');
             this.acceptBtn = document.getElementById('accept-call-btn');
@@ -781,8 +785,15 @@
             }
 
             this.peerConnection.ontrack = (event) => {
-                if (this.remoteVideo) {
-                    this.remoteVideo.srcObject = event.streams[0];
+                const stream = event.streams?.[0];
+                if (!stream) return;
+                if (this.isVideo && this.remoteVideo) {
+                    this.remoteVideo.srcObject = stream;
+                    this.remoteVideo.play().catch(() => {});
+                }
+                if (this.remoteAudio) {
+                    this.remoteAudio.srcObject = stream;
+                    this.remoteAudio.play().catch(() => {});
                 }
             };
 
@@ -793,17 +804,22 @@
             };
 
             this.peerConnection.onconnectionstatechange = () => {
-                if (this.peerConnection.connectionState === 'connected') {
+                if (!this.peerConnection) return;
+                const state = this.peerConnection.connectionState;
+                if (state === 'connected') {
                     this.status.textContent = 'Connected';
                     this.isCallActive = true;
                     this.isCalling = false;
                     this.toneGen.stop();
                     this.updateCallUI();
-                } else if (
-                    this.peerConnection.connectionState === 'disconnected' ||
-                    this.peerConnection.connectionState === 'failed' ||
-                    this.peerConnection.connectionState === 'closed'
-                ) {
+                } else if (state === 'disconnected') {
+                    if (this._disconnectTimer) clearTimeout(this._disconnectTimer);
+                    this._disconnectTimer = setTimeout(() => {
+                        if (this.peerConnection?.connectionState === 'disconnected') {
+                            this.cleanup();
+                        }
+                    }, 4000);
+                } else if (state === 'failed' || state === 'closed') {
                     this.cleanup();
                 }
             };
@@ -860,11 +876,15 @@
                     break;
 
                 case 'decline':
+                    if (!(this.isCallActive || this.isCalling || this.isIncoming)) break;
                     this.cleanup();
-                    alert('User is busy or declined the call.');
+                    if (from_user?.id !== window.authUserId) {
+                        alert('User is busy or declined the call.');
+                    }
                     break;
 
                 case 'hangup':
+                    if (!(this.isCallActive || this.isCalling || this.isIncoming)) break;
                     this.cleanup();
                     break;
             }
@@ -910,16 +930,28 @@
             }
         }
 
+        async endCall(signalType = 'hangup', extra = {}) {
+            if (this._endingCall) return;
+            this._endingCall = true;
+            const remoteId = this.remoteUserId;
+            try {
+                if (remoteId) {
+                    await this.sendSignal(signalType, extra);
+                }
+            } catch (e) {
+                console.error('Failed to send call end signal:', e);
+            } finally {
+                this.cleanup();
+                this._endingCall = false;
+            }
+        }
+
         async declineCall() {
-            if (!this.remoteUserId) return;
-            await this.sendSignal('decline');
-            this.cleanup();
+            await this.endCall('decline', { reason: 'declined' });
         }
 
         async hangupCall() {
-            if (!this.remoteUserId) return;
-            await this.sendSignal('hangup');
-            this.cleanup();
+            await this.endCall('hangup');
         }
 
         toggleMute() {
@@ -946,6 +978,7 @@
             if (this.overlay) {
                 this.overlay.classList.remove('hidden');
             }
+            document.body.style.overflow = 'hidden';
         }
 
         updateCallUI() {
@@ -967,27 +1000,40 @@
 
         cleanup() {
             this.toneGen.stop();
+            if (this._disconnectTimer) {
+                clearTimeout(this._disconnectTimer);
+                this._disconnectTimer = null;
+            }
             this.isIncoming = false;
             this.isCalling = false;
             this.isCallActive = false;
             this.incomingOfferSdp = null;
 
             if (this.peerConnection) {
-                this.peerConnection.close();
+                this.peerConnection.onconnectionstatechange = null;
+                this.peerConnection.onicecandidate = null;
+                this.peerConnection.ontrack = null;
+                try { this.peerConnection.close(); } catch (e) {}
                 this.peerConnection = null;
             }
 
             if (this.localStream) {
-                this.localStream.getTracks().forEach(track => track.stop());
+                this.localStream.getTracks().forEach((track) => track.stop());
                 this.localStream = null;
             }
 
+            [this.remoteVideo, this.remoteAudio].forEach((element) => {
+                if (!element?.srcObject) return;
+                element.srcObject.getTracks().forEach((track) => track.stop());
+                element.srcObject = null;
+            });
+
             if (this.localVideo) this.localVideo.srcObject = null;
-            if (this.remoteVideo) this.remoteVideo.srcObject = null;
 
             if (this.overlay) {
                 this.overlay.classList.add('hidden');
             }
+            document.body.style.overflow = '';
 
             this.declineBtn?.classList.add('hidden');
             this.acceptBtn?.classList.add('hidden');

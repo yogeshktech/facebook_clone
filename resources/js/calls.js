@@ -118,6 +118,8 @@ class WebRTCCallManager {
         this.callerUserId = null;
         this.ringTimeout = null;
         this.dialTimeout = null;
+        this._endingCall = false;
+        this._disconnectTimer = null;
 
         this.overlay = null;
         this.avatar = null;
@@ -388,7 +390,11 @@ class WebRTCCallManager {
         };
 
         this.peerConnection.onconnectionstatechange = () => {
-            if (this.peerConnection.connectionState === 'connected') {
+            if (!this.peerConnection) return;
+
+            const state = this.peerConnection.connectionState;
+
+            if (state === 'connected') {
                 this.status.textContent = 'Connected';
                 this.isCallActive = true;
                 this.isCalling = false;
@@ -396,9 +402,20 @@ class WebRTCCallManager {
                 this.clearCallTimeouts();
                 this.toneGen.stop();
                 this.updateCallUI();
-            } else if (
-                ['disconnected', 'failed', 'closed'].includes(this.peerConnection.connectionState)
-            ) {
+                return;
+            }
+
+            if (state === 'disconnected') {
+                this.clearDisconnectTimer();
+                this._disconnectTimer = setTimeout(() => {
+                    if (this.peerConnection?.connectionState === 'disconnected') {
+                        this.cleanup();
+                    }
+                }, 4000);
+                return;
+            }
+
+            if (state === 'failed' || state === 'closed') {
                 this.cleanup();
             }
         };
@@ -461,11 +478,15 @@ class WebRTCCallManager {
                     break;
 
                 case 'decline':
+                    if (!(this.isCallActive || this.isCalling || this.isIncoming)) break;
                     this.cleanup();
-                    alert('User is busy or declined the call.');
+                    if (from_user?.id !== window.authUserId) {
+                        alert('User is busy or declined the call.');
+                    }
                     break;
 
                 case 'hangup':
+                    if (!(this.isCallActive || this.isCalling || this.isIncoming)) break;
                     this.cleanup();
                     break;
             }
@@ -522,16 +543,50 @@ class WebRTCCallManager {
         }
     }
 
+    clearDisconnectTimer() {
+        if (this._disconnectTimer) {
+            clearTimeout(this._disconnectTimer);
+            this._disconnectTimer = null;
+        }
+    }
+
+    stopMediaStream(stream) {
+        if (!stream) return;
+        stream.getTracks().forEach((track) => track.stop());
+    }
+
+    stopRemotePlayback() {
+        [this.remoteVideo, this.remoteAudio].forEach((element) => {
+            if (!element?.srcObject) return;
+            this.stopMediaStream(element.srcObject);
+            element.srcObject = null;
+        });
+    }
+
+    async endCall(signalType = 'hangup', extra = {}) {
+        if (this._endingCall) return;
+        this._endingCall = true;
+
+        const remoteId = this.remoteUserId;
+
+        try {
+            if (remoteId) {
+                await this.sendSignal(signalType, extra);
+            }
+        } catch (e) {
+            console.error('Failed to send call end signal:', e);
+        } finally {
+            this.cleanup();
+            this._endingCall = false;
+        }
+    }
+
     async declineCall(reason = 'declined') {
-        if (!this.remoteUserId) return;
-        await this.sendSignal('decline', { reason });
-        this.cleanup();
+        await this.endCall('decline', { reason });
     }
 
     async hangupCall() {
-        if (!this.remoteUserId) return;
-        await this.sendSignal('hangup');
-        this.cleanup();
+        await this.endCall('hangup');
     }
 
     toggleMute() {
@@ -579,6 +634,7 @@ class WebRTCCallManager {
     cleanup() {
         this.toneGen.stop();
         this.clearCallTimeouts();
+        this.clearDisconnectTimer();
         this.isIncoming = false;
         this.isCalling = false;
         this.isCallActive = false;
@@ -588,18 +644,23 @@ class WebRTCCallManager {
         this.callerUserId = null;
 
         if (this.peerConnection) {
-            this.peerConnection.close();
+            this.peerConnection.onconnectionstatechange = null;
+            this.peerConnection.onicecandidate = null;
+            this.peerConnection.ontrack = null;
+            try {
+                this.peerConnection.close();
+            } catch (e) {}
             this.peerConnection = null;
         }
 
         if (this.localStream) {
-            this.localStream.getTracks().forEach((track) => track.stop());
+            this.stopMediaStream(this.localStream);
             this.localStream = null;
         }
 
+        this.stopRemotePlayback();
+
         if (this.localVideo) this.localVideo.srcObject = null;
-        if (this.remoteVideo) this.remoteVideo.srcObject = null;
-        if (this.remoteAudio) this.remoteAudio.srcObject = null;
 
         this.overlay?.classList.add('hidden');
         document.body.style.overflow = '';

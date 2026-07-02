@@ -21,9 +21,15 @@ class CallSignalingEvent implements ShouldBroadcastNow
 
     public function broadcastOn(): array
     {
-        return [
+        $channels = [
             new PrivateChannel('user-signaling.'.$this->toUserId),
         ];
+
+        if (in_array($this->type, ['hangup', 'decline'], true)) {
+            $channels[] = new PrivateChannel('user-signaling.'.$this->fromUserId);
+        }
+
+        return $channels;
     }
 
     public function broadcastAs(): string
