@@ -26,18 +26,19 @@
             'vapidKey' => config('services.firebase.vapid_key'),
         ] : null;
         $reverbConfig = config('broadcasting.connections.reverb');
+        $reverbPublicConfig = [
+            'key' => $reverbConfig['key'] ?? null,
+            'host' => $reverbConfig['options']['host'] ?? null,
+            'port' => $reverbConfig['options']['port'] ?? null,
+            'scheme' => $reverbConfig['options']['scheme'] ?? null,
+        ];
     @endphp
     <script>
         window.authUserId = {{ auth()->id() }};
         window.firebaseConfig = @json($firebaseWebConfig);
         window.maxVideoUploadMb = {{ config('media.max_video_mb') }};
         window.webrtcIceServers = @json(config('webrtc.ice_servers'));
-        window.reverbConfig = @json([
-            'key' => $reverbConfig['key'] ?? null,
-            'host' => $reverbConfig['options']['host'] ?? null,
-            'port' => $reverbConfig['options']['port'] ?? null,
-            'scheme' => $reverbConfig['options']['scheme'] ?? null,
-        ]);
+        window.reverbConfig = @json($reverbPublicConfig);
     </script>
     @endauth
     @include('layouts.assets')
