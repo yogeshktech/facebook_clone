@@ -3,13 +3,16 @@ import Pusher from 'pusher-js';
 
 window.Pusher = Pusher;
 
-const reverbKey = import.meta.env.VITE_REVERB_APP_KEY;
-const configuredHost = import.meta.env.VITE_REVERB_HOST;
+const runtime = window.reverbConfig || {};
+const reverbKey = import.meta.env.VITE_REVERB_APP_KEY || runtime.key;
+const configuredHost = import.meta.env.VITE_REVERB_HOST || runtime.host;
 const reverbHost = (!configuredHost || configuredHost === 'localhost')
     ? window.location.hostname
     : configuredHost;
-const reverbPort = import.meta.env.VITE_REVERB_PORT ?? (window.location.protocol === 'https:' ? 443 : 8080);
-const reverbScheme = import.meta.env.VITE_REVERB_SCHEME ?? (window.location.protocol === 'https:' ? 'https' : 'http');
+const defaultPort = window.location.protocol === 'https:' ? 443 : 8080;
+const reverbPort = import.meta.env.VITE_REVERB_PORT || runtime.port || defaultPort;
+const reverbScheme = import.meta.env.VITE_REVERB_SCHEME || runtime.scheme
+    || (window.location.protocol === 'https:' ? 'https' : 'http');
 
 if (reverbKey && window.authUserId) {
     window.Echo = new Echo({

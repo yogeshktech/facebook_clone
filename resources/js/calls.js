@@ -101,7 +101,6 @@ class ToneGenerator {
     }
 }
 
-// WebRTC Call Manager class
 class WebRTCCallManager {
     constructor() {
         this.peerConnection = null;
@@ -115,7 +114,6 @@ class WebRTCCallManager {
         this.isCallActive = false;
         this.incomingOfferSdp = null;
 
-        // UI references
         this.overlay = null;
         this.avatar = null;
         this.userName = null;
@@ -124,6 +122,7 @@ class WebRTCCallManager {
         this.audioPulse = null;
         this.localVideo = null;
         this.remoteVideo = null;
+        this.remoteAudio = null;
 
         this.declineBtn = null;
         this.acceptBtn = null;
@@ -143,6 +142,7 @@ class WebRTCCallManager {
         this.audioPulse = document.getElementById('call-audio-pulse');
         this.localVideo = document.getElementById('local-video');
         this.remoteVideo = document.getElementById('remote-video');
+        this.remoteAudio = document.getElementById('remote-audio');
 
         this.declineBtn = document.getElementById('decline-call-btn');
         this.acceptBtn = document.getElementById('accept-call-btn');
@@ -156,23 +156,71 @@ class WebRTCCallManager {
         this.videoBtn.onclick = () => this.toggleVideo();
         this.hangupBtn.onclick = () => this.hangupCall();
 
-        // Listen for Echo Events
-        if (window.Echo && window.authUserId) {
-            try {
-                window.Echo.private(`user-signaling.${window.authUserId}`)
-                    .listen('.call.signal', (payload) => {
-                        this.handleIncomingSignal(payload);
-                    });
-            } catch (e) {
-                console.warn('WebRTC signaling listener could not be registered on Echo private channel.');
-            }
+        this.bindChatCallButtons();
+        this.registerSignalingListener();
+    }
+
+    registerSignalingListener() {
+        if (!window.Echo || !window.authUserId) {
+            console.warn('WebRTC calls need Reverb/Echo. Set BROADCAST_CONNECTION=reverb and run reverb:start.');
+            return;
+        }
+
+        if (this._signalingBound) return;
+        this._signalingBound = true;
+
+        try {
+            window.Echo.private(`user-signaling.${window.authUserId}`)
+                .listen('.call.signal', (payload) => {
+                    this.handleIncomingSignal(payload);
+                });
+        } catch (e) {
+            console.warn('WebRTC signaling listener could not be registered.', e);
         }
     }
 
+    bindChatCallButtons() {
+        const wire = (buttonId, isVideo) => {
+            const btn = document.getElementById(buttonId);
+            if (!btn || btn.dataset.callBound === '1') return;
+            btn.dataset.callBound = '1';
+
+            btn.addEventListener('click', () => {
+                const userId = parseInt(btn.dataset.targetUserId, 10);
+                if (!userId) return;
+
+                if (!window.Echo) {
+                    alert('Voice/video calls need real-time server (Reverb). Ask admin to enable BROADCAST_CONNECTION=reverb.');
+                    return;
+                }
+
+                this.startCall(userId, isVideo, {
+                    name: btn.dataset.targetName || '',
+                    avatar: btn.dataset.targetAvatar || '',
+                });
+            });
+        };
+
+        wire('audio-call-btn', false);
+        wire('video-call-btn', true);
+    }
+
+    getIceServers() {
+        if (Array.isArray(window.webrtcIceServers) && window.webrtcIceServers.length) {
+            return window.webrtcIceServers;
+        }
+
+        return [
+            { urls: 'stun:stun.l.google.com:19302' },
+            { urls: 'stun:stun1.l.google.com:19302' },
+        ];
+    }
+
     async sendSignal(type, data = null) {
-        if (!this.remoteUserId) return;
+        if (!this.remoteUserId) return false;
+
         try {
-            await fetch('/chat/call/signal', {
+            const res = await fetch('/chat/call/signal', {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
@@ -181,22 +229,53 @@ class WebRTCCallManager {
                 },
                 body: JSON.stringify({
                     to_user_id: this.remoteUserId,
-                    type: type,
-                    data: data
-                })
+                    type,
+                    data,
+                }),
             });
+
+            if (!res.ok) {
+                const err = await res.json().catch(() => ({}));
+                console.error('Call signal failed:', err.message || res.status);
+                return false;
+            }
+
+            return true;
         } catch (e) {
             console.error('Failed to send call signal:', e);
+            return false;
         }
     }
 
-    async startCall(remoteUserId, isVideo = false) {
+    setPeerInfo(peerInfo = {}) {
+        if (peerInfo.name && this.userName) {
+            this.userName.textContent = peerInfo.name;
+        }
+        if (peerInfo.avatar && this.avatar) {
+            this.avatar.src = peerInfo.avatar;
+        }
+    }
+
+    attachRemoteStream(stream) {
+        if (this.isVideo && this.remoteVideo) {
+            this.remoteVideo.srcObject = stream;
+            this.remoteVideo.play().catch(() => {});
+        }
+        if (this.remoteAudio) {
+            this.remoteAudio.srcObject = stream;
+            this.remoteAudio.play().catch(() => {});
+        }
+    }
+
+    async startCall(remoteUserId, isVideo = false, peerInfo = {}) {
         if (this.isCallActive || this.isCalling || this.isIncoming) return;
+
         this.isCalling = true;
         this.remoteUserId = remoteUserId;
         this.isVideo = isVideo;
 
         this.showOverlay();
+        this.setPeerInfo(peerInfo);
         this.status.textContent = 'Calling...';
         this.declineBtn.classList.add('hidden');
         this.acceptBtn.classList.add('hidden');
@@ -209,7 +288,7 @@ class WebRTCCallManager {
         try {
             this.localStream = await navigator.mediaDevices.getUserMedia({
                 audio: true,
-                video: isVideo
+                video: isVideo,
             });
 
             if (isVideo && this.localVideo) {
@@ -220,34 +299,30 @@ class WebRTCCallManager {
 
             const offer = await this.peerConnection.createOffer();
             await this.peerConnection.setLocalDescription(offer);
-            await this.sendSignal('offer', { sdp: offer.sdp, isVideo: isVideo });
 
+            const sent = await this.sendSignal('offer', { sdp: offer.sdp, isVideo });
+            if (!sent) {
+                throw new Error('Could not reach call server.');
+            }
         } catch (e) {
             console.error('Failed to start call:', e);
             this.cleanup();
-            alert('Could not start call. Please check your camera/microphone permissions.');
+            alert(e.message || 'Could not start call. Check microphone/camera permissions and Reverb server.');
         }
     }
 
     createPeerConnection() {
-        const peerConfig = {
-            iceServers: [
-                { urls: 'stun:stun.l.google.com:19302' },
-                { urls: 'stun:stun1.l.google.com:19302' }
-            ]
-        };
-
-        this.peerConnection = new RTCPeerConnection(peerConfig);
+        this.peerConnection = new RTCPeerConnection({ iceServers: this.getIceServers() });
 
         if (this.localStream) {
-            this.localStream.getTracks().forEach(track => {
+            this.localStream.getTracks().forEach((track) => {
                 this.peerConnection.addTrack(track, this.localStream);
             });
         }
 
         this.peerConnection.ontrack = (event) => {
-            if (this.remoteVideo) {
-                this.remoteVideo.srcObject = event.streams[0];
+            if (event.streams?.[0]) {
+                this.attachRemoteStream(event.streams[0]);
             }
         };
 
@@ -265,9 +340,7 @@ class WebRTCCallManager {
                 this.toneGen.stop();
                 this.updateCallUI();
             } else if (
-                this.peerConnection.connectionState === 'disconnected' ||
-                this.peerConnection.connectionState === 'failed' ||
-                this.peerConnection.connectionState === 'closed'
+                ['disconnected', 'failed', 'closed'].includes(this.peerConnection.connectionState)
             ) {
                 this.cleanup();
             }
@@ -277,66 +350,78 @@ class WebRTCCallManager {
     async handleIncomingSignal(payload) {
         const { from_user, type, data } = payload;
 
-        switch (type) {
-            case 'offer':
-                if (this.isCallActive || this.isCalling || this.isIncoming) {
+        try {
+            switch (type) {
+                case 'offer':
+                    if (this.isCallActive || this.isCalling || this.isIncoming) {
+                        this.remoteUserId = from_user.id;
+                        await this.sendSignal('decline', { reason: 'busy' });
+                        this.remoteUserId = null;
+                        return;
+                    }
+                    this.isIncoming = true;
                     this.remoteUserId = from_user.id;
-                    await this.sendSignal('decline', { reason: 'busy' });
-                    this.remoteUserId = null;
-                    return;
-                }
-                this.isIncoming = true;
-                this.remoteUserId = from_user.id;
-                this.isVideo = data.isVideo;
-                this.incomingOfferSdp = data.sdp;
+                    this.isVideo = !!data.isVideo;
+                    this.incomingOfferSdp = data.sdp;
 
-                this.showOverlay();
-                this.avatar.src = from_user.avatar_url || '';
-                this.userName.textContent = from_user.name;
-                this.status.textContent = `Incoming ${this.isVideo ? 'Video' : 'Audio'} Call...`;
+                    this.showOverlay();
+                    this.setPeerInfo({ name: from_user.name, avatar: from_user.avatar_url });
+                    this.status.textContent = `Incoming ${this.isVideo ? 'Video' : 'Audio'} Call...`;
 
-                this.declineBtn.classList.remove('hidden');
-                this.acceptBtn.classList.remove('hidden');
-                this.hangupBtn.classList.add('hidden');
-                this.muteBtn.classList.add('hidden');
-                this.videoBtn.classList.add('hidden');
+                    this.declineBtn.classList.remove('hidden');
+                    this.acceptBtn.classList.remove('hidden');
+                    this.hangupBtn.classList.add('hidden');
+                    this.muteBtn.classList.add('hidden');
+                    this.videoBtn.classList.add('hidden');
 
-                this.toneGen.startRing();
-                break;
+                    this.toneGen.startRing();
+                    break;
 
-            case 'answer':
-                if (!this.peerConnection) return;
-                await this.peerConnection.setRemoteDescription(new RTCSessionDescription({
-                    type: 'answer',
-                    sdp: data.sdp
-                }));
-                while (this.iceCandidatesQueue.length > 0) {
-                    const cand = this.iceCandidatesQueue.shift();
-                    await this.peerConnection.addIceCandidate(new RTCIceCandidate(cand));
-                }
-                break;
+                case 'answer':
+                    if (!this.peerConnection) return;
+                    await this.peerConnection.setRemoteDescription(new RTCSessionDescription({
+                        type: 'answer',
+                        sdp: data.sdp,
+                    }));
+                    await this.flushIceCandidates();
+                    break;
 
-            case 'candidate':
-                if (this.peerConnection && this.peerConnection.remoteDescription) {
-                    await this.peerConnection.addIceCandidate(new RTCIceCandidate(data));
-                } else {
-                    this.iceCandidatesQueue.push(data);
-                }
-                break;
+                case 'candidate':
+                    if (this.peerConnection && this.peerConnection.remoteDescription) {
+                        await this.peerConnection.addIceCandidate(new RTCIceCandidate(data));
+                    } else {
+                        this.iceCandidatesQueue.push(data);
+                    }
+                    break;
 
-            case 'decline':
-                this.cleanup();
-                alert('User is busy or declined the call.');
-                break;
+                case 'decline':
+                    this.cleanup();
+                    alert('User is busy or declined the call.');
+                    break;
 
-            case 'hangup':
-                this.cleanup();
-                break;
+                case 'hangup':
+                    this.cleanup();
+                    break;
+            }
+        } catch (e) {
+            console.error('Failed to handle call signal:', e);
+        }
+    }
+
+    async flushIceCandidates() {
+        while (this.iceCandidatesQueue.length > 0 && this.peerConnection) {
+            const cand = this.iceCandidatesQueue.shift();
+            try {
+                await this.peerConnection.addIceCandidate(new RTCIceCandidate(cand));
+            } catch (e) {
+                console.warn('ICE candidate error:', e);
+            }
         }
     }
 
     async acceptCall() {
         if (!this.isIncoming || !this.remoteUserId || !this.incomingOfferSdp) return;
+
         this.toneGen.stop();
         this.acceptBtn.classList.add('hidden');
         this.declineBtn.classList.add('hidden');
@@ -345,7 +430,7 @@ class WebRTCCallManager {
         try {
             this.localStream = await navigator.mediaDevices.getUserMedia({
                 audio: true,
-                video: this.isVideo
+                video: this.isVideo,
             });
 
             if (this.isVideo && this.localVideo) {
@@ -356,18 +441,14 @@ class WebRTCCallManager {
 
             await this.peerConnection.setRemoteDescription(new RTCSessionDescription({
                 type: 'offer',
-                sdp: this.incomingOfferSdp
+                sdp: this.incomingOfferSdp,
             }));
 
-            while (this.iceCandidatesQueue.length > 0) {
-                const cand = this.iceCandidatesQueue.shift();
-                await this.peerConnection.addIceCandidate(new RTCIceCandidate(cand));
-            }
+            await this.flushIceCandidates();
 
             const answer = await this.peerConnection.createAnswer();
             await this.peerConnection.setLocalDescription(answer);
             await this.sendSignal('answer', { sdp: answer.sdp });
-
         } catch (e) {
             console.error('Failed to accept call:', e);
             this.cleanup();
@@ -408,9 +489,8 @@ class WebRTCCallManager {
     }
 
     showOverlay() {
-        if (this.overlay) {
-            this.overlay.classList.remove('hidden');
-        }
+        this.overlay?.classList.remove('hidden');
+        document.body.style.overflow = 'hidden';
     }
 
     updateCallUI() {
@@ -419,15 +499,15 @@ class WebRTCCallManager {
         this.hangupBtn.classList.remove('hidden');
 
         if (this.isVideo) {
-            this.videosContainer.classList.remove('hidden');
-            this.audioPulse.classList.add('hidden');
-            this.videoBtn.classList.remove('hidden');
+            this.videosContainer?.classList.remove('hidden');
+            this.audioPulse?.classList.add('hidden');
+            this.videoBtn?.classList.remove('hidden');
         } else {
-            this.videosContainer.classList.add('hidden');
-            this.audioPulse.classList.remove('hidden');
-            this.videoBtn.classList.add('hidden');
+            this.videosContainer?.classList.add('hidden');
+            this.audioPulse?.classList.remove('hidden');
+            this.videoBtn?.classList.add('hidden');
         }
-        this.muteBtn.classList.remove('hidden');
+        this.muteBtn?.classList.remove('hidden');
     }
 
     cleanup() {
@@ -443,16 +523,16 @@ class WebRTCCallManager {
         }
 
         if (this.localStream) {
-            this.localStream.getTracks().forEach(track => track.stop());
+            this.localStream.getTracks().forEach((track) => track.stop());
             this.localStream = null;
         }
 
         if (this.localVideo) this.localVideo.srcObject = null;
         if (this.remoteVideo) this.remoteVideo.srcObject = null;
+        if (this.remoteAudio) this.remoteAudio.srcObject = null;
 
-        if (this.overlay) {
-            this.overlay.classList.add('hidden');
-        }
+        this.overlay?.classList.add('hidden');
+        document.body.style.overflow = '';
 
         this.declineBtn?.classList.add('hidden');
         this.acceptBtn?.classList.add('hidden');

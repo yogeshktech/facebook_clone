@@ -25,11 +25,19 @@
             'measurementId' => config('services.firebase.measurement_id'),
             'vapidKey' => config('services.firebase.vapid_key'),
         ] : null;
+        $reverbConfig = config('broadcasting.connections.reverb');
     @endphp
     <script>
         window.authUserId = {{ auth()->id() }};
         window.firebaseConfig = @json($firebaseWebConfig);
         window.maxVideoUploadMb = {{ config('media.max_video_mb') }};
+        window.webrtcIceServers = @json(config('webrtc.ice_servers'));
+        window.reverbConfig = @json([
+            'key' => $reverbConfig['key'] ?? null,
+            'host' => $reverbConfig['options']['host'] ?? null,
+            'port' => $reverbConfig['options']['port'] ?? null,
+            'scheme' => $reverbConfig['options']['scheme'] ?? null,
+        ]);
     </script>
     @endauth
     @include('layouts.assets')
@@ -94,6 +102,7 @@
                 <video id="remote-video" autoplay playsinline class="w-full h-full object-cover"></video>
                 <video id="local-video" autoplay playsinline muted class="absolute bottom-4 right-4 w-32 aspect-video object-cover rounded-lg border-2 border-white shadow-md z-10"></video>
             </div>
+            <audio id="remote-audio" autoplay playsinline class="sr-only"></audio>
 
             <!-- Audio Pulsing Animation -->
             <div id="call-audio-pulse" class="hidden my-auto flex items-center justify-center gap-1.5 h-16">
