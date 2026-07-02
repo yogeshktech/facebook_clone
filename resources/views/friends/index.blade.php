@@ -95,13 +95,13 @@
                             Message
                         </button>
                     </form>
-                    <form action="{{ route('friends.unfriend', $friend) }}" method="POST"
+                    {{-- <form action="{{ route('friends.unfriend', $friend) }}" method="POST"
                         onsubmit="return confirm('Remove {{ $friend->name }} from friends?')">
                         @csrf @method('DELETE')
                         <button type="submit" class="bg-fb-gray text-gray-800 text-sm font-semibold px-3 py-1.5 rounded-lg hover:bg-gray-200 whitespace-nowrap">
                             Unfriend
                         </button>
-                    </form>
+                    </form> --}}
                 </div>
             </li>
             @empty
