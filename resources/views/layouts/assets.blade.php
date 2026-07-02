@@ -2,6 +2,9 @@
     @vite(['resources/css/app.css', 'resources/js/app.js'])
 @else
     <script src="https://cdn.tailwindcss.com"></script>
+    @auth
+        @include('layouts.echo-cdn')
+    @endauth
     @include('layouts.image-compress')
     <script>
         tailwind.config = {
@@ -658,17 +661,47 @@
             this.videoBtn.onclick = () => this.toggleVideo();
             this.hangupBtn.onclick = () => this.hangupCall();
 
-            // Listen for Echo Events
-            if (window.Echo && window.authUserId) {
-                try {
-                    window.Echo.private(`user-signaling.${window.authUserId}`)
-                        .listen('.call.signal', (payload) => {
-                            this.handleIncomingSignal(payload);
-                        });
-                } catch (e) {
-                    console.warn('WebRTC signaling listener could not be registered on Echo private channel.');
-                }
+            this.bindChatCallButtons();
+            this.registerSignalingListener();
+        }
+
+        registerSignalingListener() {
+            if (!window.Echo || !window.authUserId) {
+                console.warn('WebRTC calls need Reverb/Echo. Set BROADCAST_CONNECTION=reverb and run reverb:start.');
+                return;
             }
+            if (this._signalingBound) return;
+            this._signalingBound = true;
+            try {
+                window.Echo.private(`user-signaling.${window.authUserId}`)
+                    .listen('.call.signal', (payload) => {
+                        this.handleIncomingSignal(payload);
+                    });
+            } catch (e) {
+                console.warn('WebRTC signaling listener could not be registered.', e);
+            }
+        }
+
+        bindChatCallButtons() {
+            const wire = (buttonId, isVideo) => {
+                const btn = document.getElementById(buttonId);
+                if (!btn || btn.dataset.callBound === '1') return;
+                btn.dataset.callBound = '1';
+                btn.addEventListener('click', () => {
+                    const userId = parseInt(btn.dataset.targetUserId, 10);
+                    if (!userId) return;
+                    if (!window.Echo) {
+                        alert('Voice/video calls need real-time server (Reverb). Enable REVERB_* in .env and run php artisan reverb:start.');
+                        return;
+                    }
+                    this.startCall(userId, isVideo, {
+                        name: btn.dataset.targetName || '',
+                        avatar: btn.dataset.targetAvatar || '',
+                    });
+                });
+            };
+            wire('audio-call-btn', false);
+            wire('video-call-btn', true);
         }
 
         async sendSignal(type, data = null) {
@@ -970,6 +1003,10 @@
     }
 
     window.CallManager = new WebRTCCallManager();
-    window.CallManager.init();
+    document.addEventListener('DOMContentLoaded', () => {
+        if (window.CallManager) {
+            window.CallManager.init();
+        }
+    });
 </script>
 @endif
