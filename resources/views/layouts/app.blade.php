@@ -13,6 +13,17 @@
     <link rel="icon" type="image/png" sizes="32x32" href="{{ asset('images/favicon.png') }}">
     <link rel="apple-touch-icon" href="{{ asset('images/apple-touch-icon.png') }}">
     <title>@yield('title', 'NEWBOOK') - {{ config('app.name', 'NEWBOOK') }}</title>
+    <script>
+        window.togglePassword = function (inputId, btn) {
+            const input = document.getElementById(inputId);
+            if (!input) return;
+            const show = input.type === 'password';
+            input.type = show ? 'text' : 'password';
+            btn.querySelector('.eye-open')?.classList.toggle('hidden', show);
+            btn.querySelector('.eye-closed')?.classList.toggle('hidden', !show);
+            btn.setAttribute('aria-label', show ? 'Hide password' : 'Show password');
+        };
+    </script>
     @auth
     @php
         $firebaseWebConfig = config('services.firebase.api_key') ? [

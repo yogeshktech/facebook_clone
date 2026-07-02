@@ -88,7 +88,7 @@
 
             <script>
                 function quickLogin(username, password) {
-                    const form = document.querySelector('form[action="{{ route('login') }}"]');
+                    const form = document.querySelector('form[action={{ json_encode(route('login')) }}]');
                     const loginInput = form?.querySelector('input[name="login"]');
                     const passwordInput = form?.querySelector('input[name="password"]');
                     if (loginInput && passwordInput && form) {

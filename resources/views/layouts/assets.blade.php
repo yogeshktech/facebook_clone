@@ -971,6 +971,5 @@
 
     window.CallManager = new WebRTCCallManager();
     window.CallManager.init();
-}
 </script>
 @endif
