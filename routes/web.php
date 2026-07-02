@@ -18,6 +18,7 @@ use App\Http\Controllers\PageController;
 use App\Http\Controllers\PostController;
 use App\Http\Controllers\ProfileController;
 use App\Http\Controllers\ReelController;
+use App\Http\Controllers\CallSignalingController;
 use App\Http\Controllers\VideoController;
 use App\Http\Controllers\SearchController;
 use App\Http\Controllers\StoryController;
@@ -129,6 +130,7 @@ Route::middleware('auth')->group(function () {
     Route::get('/chat/{conversation}', [ChatController::class, 'show'])->name('chat.show');
     Route::post('/chat/start/{user}', [ChatController::class, 'start'])->name('chat.start');
     Route::post('/chat/{conversation}/send', [ChatController::class, 'send'])->name('chat.send');
+    Route::post('/chat/call/signal', [CallSignalingController::class, 'signal'])->name('chat.call.signal');
 
     // Groups
     Route::get('/groups', [GroupController::class, 'index'])->name('groups.index');

@@ -15,10 +15,34 @@
 @php $otherUser = $conversation->users->where('id', '!=', auth()->id())->first(); @endphp
 <div class="max-w-2xl mx-auto p-2 sm:p-4 pb-2">
     <div class="bg-white rounded-lg shadow flex flex-col h-[calc(100dvh-9.5rem)] md:h-[calc(100dvh-8rem)]">
-        <div class="p-4 border-b flex items-center gap-3">
-            <a href="{{ route('chat.index') }}" class="text-gray-500 hover:text-fb-blue">&larr;</a>
-            <img src="{{ $otherUser?->avatar_url }}" alt="" class="w-10 h-10 rounded-full object-cover">
-            <h2 class="font-semibold">{{ $otherUser?->name }}</h2>
+        <div class="p-4 border-b flex items-center justify-between">
+            <div class="flex items-center gap-3">
+                <a href="{{ route('chat.index') }}" class="text-gray-500 hover:text-fb-blue">&larr;</a>
+                <img src="{{ $otherUser?->avatar_url }}" alt="" class="w-10 h-10 rounded-full object-cover">
+                <h2 class="font-semibold">{{ $otherUser?->name }}</h2>
+            </div>
+            @if($otherUser)
+                <div class="flex items-center gap-2">
+                    <button type="button" id="audio-call-btn" 
+                        data-target-user-id="{{ $otherUser->id }}"
+                        data-target-name="{{ $otherUser->name }}"
+                        data-target-avatar="{{ $otherUser->avatar_url }}"
+                        class="p-2 text-gray-500 hover:text-fb-blue rounded-full hover:bg-fb-gray transition" title="Audio Call">
+                        <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" d="M3 5a2 2 0 012-2h3.28a1 1 0 01.94.725l.548 2.2a1 1 0 01-.321.988l-1.305.98a10.582 10.582 0 004.872 4.872l.98-1.305a1 1 0 01.988-.321l2.2.548a1 1 0 01.725.94V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z"/>
+                        </svg>
+                    </button>
+                    <button type="button" id="video-call-btn" 
+                        data-target-user-id="{{ $otherUser->id }}"
+                        data-target-name="{{ $otherUser->name }}"
+                        data-target-avatar="{{ $otherUser->avatar_url }}"
+                        class="p-2 text-gray-500 hover:text-fb-blue rounded-full hover:bg-fb-gray transition" title="Video Call">
+                        <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z"/>
+                        </svg>
+                    </button>
+                </div>
+            @endif
         </div>
 
         <div class="flex-1 overflow-y-auto p-4 space-y-3 flex flex-col" id="chat-messages"></div>

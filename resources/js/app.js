@@ -1,5 +1,6 @@
 import './bootstrap';
 import './image-compress';
+import './calls';
 import { initNotificationBell } from './notifications';
 
 let deferredPwaPrompt = null;
@@ -209,6 +210,9 @@ document.addEventListener('DOMContentLoaded', () => {
     initFormDedup();
     initPwa();
     initAjaxLikeAndComment();
+    if (window.CallManager) {
+        window.CallManager.init();
+    }
 
     ['flash-success', 'flash-error'].forEach(id => {
         const el = document.getElementById(id);
