@@ -1,0 +1,24 @@
+; Supervisor config for newbook.workarya.com
+; Copy: sudo cp deploy/supervisor-newbook.conf.example /etc/supervisor/conf.d/newbook.conf
+; Then: sudo supervisorctl reread && sudo supervisorctl update
+
+[program:newbook-reverb]
+process_name=%(program_name)s
+command=php /var/www/newbook/artisan reverb:start
+autostart=true
+autorestart=true
+user=www-data
+redirect_stderr=true
+stdout_logfile=/var/www/newbook/storage/logs/reverb.log
+stopwaitsecs=10
+
+[program:newbook-queue]
+process_name=%(program_name)s
+command=php /var/www/newbook/artisan queue:work database --sleep=1 --tries=3 --max-time=3600
+autostart=true
+autorestart=true
+user=www-data
+numprocs=1
+redirect_stderr=true
+stdout_logfile=/var/www/newbook/storage/logs/queue.log
+stopwaitsecs=3600

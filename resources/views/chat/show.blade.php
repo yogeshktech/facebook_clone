@@ -182,18 +182,28 @@
         sendBtn.disabled = true;
 
         try {
+            const controller = new AbortController();
+            const timeoutId = setTimeout(() => controller.abort(), 25000);
+
             const res = await fetch(sendUrl, {
                 method: 'POST',
                 body: formData,
                 credentials: 'same-origin',
+                signal: controller.signal,
                 headers: {
                     'Accept': 'application/json',
                     'X-Requested-With': 'XMLHttpRequest',
                 },
             });
+            clearTimeout(timeoutId);
 
             if (res.status === 419) {
                 alert('Session expired. Please refresh the page.');
+                return;
+            }
+
+            if (res.status === 504 || res.status === 502) {
+                alert('Server is busy. Please wait a moment and refresh the page.');
                 return;
             }
 
@@ -230,7 +240,11 @@
             lastMessageId = Math.max(lastMessageId, msg.id);
             scrollToBottom();
         } catch (e) {
-            alert('Network error. Please try again.');
+            if (e.name === 'AbortError') {
+                alert('Request timed out. Server may be overloaded — please refresh and try again.');
+            } else {
+                alert('Network error. Please try again.');
+            }
         } finally {
             sending = false;
             sendBtn.disabled = false;
@@ -392,11 +406,11 @@
         } catch (e) {}
     }
 
-    let pollingInterval = setInterval(fetchNewMessages, 2000);
+    let pollingInterval = setInterval(fetchNewMessages, 8000);
 
     if (window.Echo) {
         clearInterval(pollingInterval);
-        pollingInterval = setInterval(fetchNewMessages, 4000);
+        pollingInterval = setInterval(fetchNewMessages, 15000);
 
         try {
             conversationChannel = window.Echo.private(`conversation.${conversationId}`);

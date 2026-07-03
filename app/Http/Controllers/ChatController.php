@@ -12,6 +12,7 @@ use App\Support\MediaStorage;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\View\View;
 
 class ChatController extends Controller
@@ -58,7 +59,7 @@ class ChatController extends Controller
         $otherUser = $conversation->users->where('id', '!=', auth()->id())->first();
         $presence = $this->presencePayload($conversation);
 
-        return view('chat.show', compact('conversation', 'messages', 'initialMessages', 'otherUser', 'presence'));
+        return view('chat.show', compact('conversation', 'initialMessages', 'otherUser', 'presence'));
     }
 
     public function start(User $user): RedirectResponse
@@ -83,10 +84,8 @@ class ChatController extends Controller
         );
 
         $conversation->load(['users' => fn ($q) => $q->withPivot('last_read_at')]);
-        $this->markIncomingDeliveredAndRead($conversation);
-        $conversation->load(['users' => fn ($q) => $q->withPivot('last_read_at')]);
 
-        $query = $conversation->messages()->with('user')->latest('created_at');
+        $query = $conversation->messages()->with('user:id,name')->latest('created_at');
 
         if ($request->filled('after_id')) {
             $query->where('id', '>', (int) $request->after_id);
@@ -94,15 +93,12 @@ class ChatController extends Controller
 
         $messages = $query->limit(50)->get()->sortBy('created_at')->values();
 
-        $statuses = $conversation->messages()
-            ->where('user_id', auth()->id())
-            ->when(
-                $request->filled('after_id'),
-                fn ($q) => $q->where('id', '>', max(0, (int) $request->after_id - 50)),
-                fn ($q) => $q->latest('id')->limit(50)
-            )
-            ->get()
-            ->mapWithKeys(fn ($m) => [$m->id => $this->deliveryStatus($m, $conversation)]);
+        if ($messages->isNotEmpty()) {
+            $this->markIncomingDeliveredAndReadThrottled($conversation);
+            $conversation->load(['users' => fn ($q) => $q->withPivot('last_read_at')]);
+        }
+
+        $statuses = $this->recentStatuses($conversation, $request);
 
         return response()->json([
             'messages' => $messages->map(fn ($m) => $this->messagePayload($m, $conversation)),
@@ -122,11 +118,17 @@ class ChatController extends Controller
             'typing' => ['required', 'boolean'],
         ]);
 
-        broadcast(new UserTyping(
-            $conversation->id,
-            auth()->id(),
-            $validated['typing']
-        ))->toOthers();
+        $conversationId = $conversation->id;
+        $userId = auth()->id();
+        $typing = $validated['typing'];
+
+        dispatch(function () use ($conversationId, $userId, $typing) {
+            try {
+                broadcast(new UserTyping($conversationId, $userId, $typing))->toOthers();
+            } catch (\Throwable $e) {
+                report($e);
+            }
+        })->afterResponse();
 
         return response()->json(['ok' => true]);
     }
@@ -188,17 +190,25 @@ class ChatController extends Controller
                 return;
             }
 
-            broadcast(new MessageSent($message))->toOthers();
+            try {
+                broadcast(new MessageSent($message))->toOthers();
+            } catch (\Throwable $e) {
+                report($e);
+            }
 
             $conversation = Conversation::find($conversationId);
             $sender = User::find($senderId);
             if ($conversation && $sender) {
-                NotificationService::chatMessage($conversation, $sender, $message);
+                try {
+                    NotificationService::chatMessage($conversation, $sender, $message);
+                } catch (\Throwable $e) {
+                    report($e);
+                }
             }
         })->afterResponse();
 
         if ($request->expectsJson()) {
-            $message->refresh();
+            $message->load('user');
             $conversation->load(['users' => fn ($q) => $q->withPivot('last_read_at')]);
 
             return response()->json([
@@ -294,5 +304,43 @@ class ChatController extends Controller
             ->update(['delivered_at' => now()]);
 
         $conversation->users()->updateExistingPivot(auth()->id(), ['last_read_at' => now()]);
+    }
+
+    private function markIncomingDeliveredAndReadThrottled(Conversation $conversation): void
+    {
+        $key = 'chat:read:'.$conversation->id.':'.auth()->id();
+
+        if (Cache::has($key)) {
+            return;
+        }
+
+        $this->markIncomingDeliveredAndRead($conversation);
+        Cache::put($key, true, now()->addSeconds(20));
+    }
+
+    private function recentStatuses(Conversation $conversation, Request $request): array
+    {
+        $key = 'chat:statuses:'.$conversation->id.':'.auth()->id();
+
+        if ($request->filled('after_id') && Cache::has($key)) {
+            return [];
+        }
+
+        $statuses = $conversation->messages()
+            ->where('user_id', auth()->id())
+            ->when(
+                $request->filled('after_id'),
+                fn ($q) => $q->where('id', '>', max(0, (int) $request->after_id - 30)),
+                fn ($q) => $q->latest('id')->limit(30)
+            )
+            ->get()
+            ->mapWithKeys(fn ($m) => [$m->id => $this->deliveryStatus($m, $conversation)])
+            ->all();
+
+        if ($request->filled('after_id')) {
+            Cache::put($key, true, now()->addSeconds(12));
+        }
+
+        return $statuses;
     }
 }

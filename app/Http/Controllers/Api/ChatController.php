@@ -90,12 +90,20 @@ class ChatController extends Controller
                 return;
             }
 
-            broadcast(new MessageSent($message))->toOthers();
+            try {
+                broadcast(new MessageSent($message))->toOthers();
+            } catch (\Throwable $e) {
+                report($e);
+            }
 
             $conversation = Conversation::find($conversationId);
             $sender = User::find($senderId);
             if ($conversation && $sender) {
-                NotificationService::chatMessage($conversation, $sender, $message);
+                try {
+                    NotificationService::chatMessage($conversation, $sender, $message);
+                } catch (\Throwable $e) {
+                    report($e);
+                }
             }
         })->afterResponse();
 
