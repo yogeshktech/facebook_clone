@@ -46,7 +46,7 @@ class NotificationService
             report($e);
         }
 
-        SendPushNotificationJob::dispatchSync($notification);
+        SendPushNotificationJob::dispatch($notification);
 
         return $notification;
     }

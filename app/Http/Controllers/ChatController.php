@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Events\MessageSent;
+use App\Events\UserTyping;
 use App\Models\Conversation;
 use App\Models\Message;
 use App\Models\User;
@@ -54,7 +55,10 @@ class ChatController extends Controller
             ->map(fn ($m) => $this->messagePayload($m, $conversation))
             ->values();
 
-        return view('chat.show', compact('conversation', 'messages', 'initialMessages'));
+        $otherUser = $conversation->users->where('id', '!=', auth()->id())->first();
+        $presence = $this->presencePayload($conversation);
+
+        return view('chat.show', compact('conversation', 'messages', 'initialMessages', 'otherUser', 'presence'));
     }
 
     public function start(User $user): RedirectResponse
@@ -92,13 +96,39 @@ class ChatController extends Controller
 
         $statuses = $conversation->messages()
             ->where('user_id', auth()->id())
+            ->when(
+                $request->filled('after_id'),
+                fn ($q) => $q->where('id', '>', max(0, (int) $request->after_id - 50)),
+                fn ($q) => $q->latest('id')->limit(50)
+            )
             ->get()
             ->mapWithKeys(fn ($m) => [$m->id => $this->deliveryStatus($m, $conversation)]);
 
         return response()->json([
             'messages' => $messages->map(fn ($m) => $this->messagePayload($m, $conversation)),
             'statuses' => $statuses,
+            'presence' => $this->presencePayload($conversation),
         ]);
+    }
+
+    public function typing(Request $request, Conversation $conversation): JsonResponse
+    {
+        abort_unless(
+            $conversation->users()->where('user_id', auth()->id())->exists(),
+            403
+        );
+
+        $validated = $request->validate([
+            'typing' => ['required', 'boolean'],
+        ]);
+
+        broadcast(new UserTyping(
+            $conversation->id,
+            auth()->id(),
+            $validated['typing']
+        ))->toOthers();
+
+        return response()->json(['ok' => true]);
     }
 
     public function send(Request $request, Conversation $conversation): RedirectResponse|JsonResponse
@@ -147,9 +177,25 @@ class ChatController extends Controller
         ]);
 
         $conversation->touch();
-        broadcast(new MessageSent($message))->toOthers();
 
-        NotificationService::chatMessage($conversation, auth()->user(), $message);
+        $messageId = $message->id;
+        $conversationId = $conversation->id;
+        $senderId = auth()->id();
+
+        dispatch(function () use ($messageId, $conversationId, $senderId) {
+            $message = Message::with('user')->find($messageId);
+            if (! $message) {
+                return;
+            }
+
+            broadcast(new MessageSent($message))->toOthers();
+
+            $conversation = Conversation::find($conversationId);
+            $sender = User::find($senderId);
+            if ($conversation && $sender) {
+                NotificationService::chatMessage($conversation, $sender, $message);
+            }
+        })->afterResponse();
 
         if ($request->expectsJson()) {
             $message->refresh();
@@ -215,6 +261,24 @@ class ChatController extends Controller
         }
 
         return 'sent';
+    }
+
+    private function presencePayload(Conversation $conversation): array
+    {
+        $other = $conversation->users->where('id', '!=', auth()->id())->first();
+
+        if (! $other) {
+            return ['online' => false, 'label' => 'Offline'];
+        }
+
+        $online = $this->isUserOnline($other);
+
+        return [
+            'online' => $online,
+            'label' => $online ? 'Online' : ($other->last_seen_at
+                ? 'Last seen '.$other->last_seen_at->diffForHumans()
+                : 'Offline'),
+        ];
     }
 
     private function isUserOnline(User $user): bool

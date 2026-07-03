@@ -27,19 +27,36 @@ class CallSignalingController extends Controller
             ], 403);
         }
 
-        broadcast(new CallSignalingEvent(
-            auth()->id(),
-            (int) $validated['to_user_id'],
-            $validated['type'],
-            $validated['data'] ?? []
-        ))->toOthers();
+        $broadcastSuccess = true;
+        try {
+            broadcast(new CallSignalingEvent(
+                auth()->id(),
+                (int) $validated['to_user_id'],
+                $validated['type'],
+                $validated['data'] ?? []
+            ))->toOthers();
+        } catch (\Throwable $e) {
+            $broadcastSuccess = false;
+            logger()->error("Call signaling broadcast failed: " . $e->getMessage());
+        }
 
-        app(CallHistoryService::class)->recordFromSignal(
-            auth()->id(),
-            (int) $validated['to_user_id'],
-            $validated['type'],
-            $validated['data'] ?? []
-        );
+        try {
+            app(CallHistoryService::class)->recordFromSignal(
+                auth()->id(),
+                (int) $validated['to_user_id'],
+                $validated['type'],
+                $validated['data'] ?? []
+            );
+        } catch (\Throwable $e) {
+            logger()->error("Failed to record call history: " . $e->getMessage());
+        }
+
+        if (! $broadcastSuccess) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Signaling server is offline. Please make sure Laravel Reverb is running.',
+            ], 503);
+        }
 
         return response()->json(['success' => true]);
     }

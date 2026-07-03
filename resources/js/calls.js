@@ -262,8 +262,9 @@ class WebRTCCallManager {
         }, 60000);
     }
 
-    async sendSignal(type, data = null) {
-        if (!this.remoteUserId) return false;
+    async sendSignal(type, data = null, remoteUserId = null) {
+        const targetId = remoteUserId ?? this.remoteUserId;
+        if (!targetId) return false;
 
         try {
             const res = await fetch('/chat/call/signal', {
@@ -274,7 +275,7 @@ class WebRTCCallManager {
                     'Accept': 'application/json',
                 },
                 body: JSON.stringify({
-                    to_user_id: this.remoteUserId,
+                    to_user_id: targetId,
                     type,
                     data: ['hangup', 'decline'].includes(type)
                         ? this.callMeta(data || {})
@@ -292,6 +293,28 @@ class WebRTCCallManager {
         } catch (e) {
             console.error('Failed to send call signal:', e);
             return false;
+        }
+    }
+
+    showLocalVideoPreview() {
+        if (!this.isVideo || !this.localStream) return;
+
+        this.videosContainer?.classList.remove('hidden');
+        this.audioPulse?.classList.add('hidden');
+
+        if (this.localVideo) {
+            this.localVideo.srcObject = this.localStream;
+            this.localVideo.muted = true;
+            this.localVideo.play().catch(() => {});
+        }
+    }
+
+    showMediaControls() {
+        if (this.localStream) {
+            this.muteBtn?.classList.remove('hidden');
+        }
+        if (this.isVideo) {
+            this.videoBtn?.classList.remove('hidden');
         }
     }
 
@@ -316,7 +339,9 @@ class WebRTCCallManager {
     }
 
     async startCall(remoteUserId, isVideo = false, peerInfo = {}) {
-        if (this.isCallActive || this.isCalling || this.isIncoming) return;
+        if (this.isCallActive || this.isCalling || this.isIncoming || this._endingCall) return;
+
+        this._endingCall = false;
 
         this.isCalling = true;
         this.remoteUserId = remoteUserId;
@@ -332,8 +357,7 @@ class WebRTCCallManager {
         this.declineBtn.classList.add('hidden');
         this.acceptBtn.classList.add('hidden');
         this.hangupBtn.classList.remove('hidden');
-        this.muteBtn.classList.add('hidden');
-        this.videoBtn.classList.add('hidden');
+        this.showMediaControls();
 
         this.toneGen.startDial();
 
@@ -343,9 +367,7 @@ class WebRTCCallManager {
                 video: isVideo,
             });
 
-            if (isVideo && this.localVideo) {
-                this.localVideo.srcObject = this.localStream;
-            }
+            this.showLocalVideoPreview();
 
             this.createPeerConnection();
 
@@ -467,6 +489,11 @@ class WebRTCCallManager {
                         sdp: data.sdp,
                     }));
                     await this.flushIceCandidates();
+                    this.wasAnswered = true;
+                    this.isCalling = false;
+                    this.clearCallTimeouts();
+                    this.toneGen.stop();
+                    this.updateCallUI();
                     break;
 
                 case 'candidate':
@@ -512,6 +539,7 @@ class WebRTCCallManager {
         this.toneGen.stop();
         this.acceptBtn.classList.add('hidden');
         this.declineBtn.classList.add('hidden');
+        this.hangupBtn.classList.remove('hidden');
         this.status.textContent = 'Connecting...';
 
         try {
@@ -520,9 +548,8 @@ class WebRTCCallManager {
                 video: this.isVideo,
             });
 
-            if (this.isVideo && this.localVideo) {
-                this.localVideo.srcObject = this.localStream;
-            }
+            this.showLocalVideoPreview();
+            this.showMediaControls();
 
             this.createPeerConnection();
 
@@ -536,6 +563,12 @@ class WebRTCCallManager {
             const answer = await this.peerConnection.createAnswer();
             await this.peerConnection.setLocalDescription(answer);
             await this.sendSignal('answer', { sdp: answer.sdp });
+
+            this.wasAnswered = true;
+            this.isIncoming = false;
+            this.isCallActive = true;
+            this.clearCallTimeouts();
+            this.updateCallUI();
         } catch (e) {
             console.error('Failed to accept call:', e);
             this.cleanup();
@@ -568,16 +601,11 @@ class WebRTCCallManager {
         this._endingCall = true;
 
         const remoteId = this.remoteUserId;
+        const payload = ['hangup', 'decline'].includes(signalType) ? this.callMeta(extra) : extra;
 
-        try {
-            if (remoteId) {
-                await this.sendSignal(signalType, extra);
-            }
-        } catch (e) {
-            console.error('Failed to send call end signal:', e);
-        } finally {
-            this.cleanup();
-            this._endingCall = false;
+        this.cleanup();
+        if (remoteId) {
+            this.sendSignal(signalType, payload, remoteId).catch(() => {});
         }
     }
 
@@ -592,20 +620,32 @@ class WebRTCCallManager {
     toggleMute() {
         if (!this.localStream) return;
         const audioTrack = this.localStream.getAudioTracks()[0];
-        if (audioTrack) {
-            audioTrack.enabled = !audioTrack.enabled;
-            this.muteBtn.classList.toggle('bg-red-600', !audioTrack.enabled);
-            this.muteBtn.classList.toggle('hover:bg-red-700', !audioTrack.enabled);
+        if (!audioTrack) return;
+
+        audioTrack.enabled = !audioTrack.enabled;
+        const muted = !audioTrack.enabled;
+        this.muteBtn?.classList.toggle('bg-red-600', muted);
+        this.muteBtn?.classList.toggle('hover:bg-red-700', muted);
+        this.muteBtn?.classList.toggle('bg-slate-700', !muted);
+        this.muteBtn?.classList.toggle('hover:bg-slate-600', !muted);
+        if (this.muteBtn) {
+            this.muteBtn.title = muted ? 'Unmute' : 'Mute Audio';
         }
     }
 
     toggleVideo() {
         if (!this.localStream || !this.isVideo) return;
         const videoTrack = this.localStream.getVideoTracks()[0];
-        if (videoTrack) {
-            videoTrack.enabled = !videoTrack.enabled;
-            this.videoBtn.classList.toggle('bg-red-600', !videoTrack.enabled);
-            this.videoBtn.classList.toggle('hover:bg-red-700', !videoTrack.enabled);
+        if (!videoTrack) return;
+
+        videoTrack.enabled = !videoTrack.enabled;
+        const off = !videoTrack.enabled;
+        this.videoBtn?.classList.toggle('bg-red-600', off);
+        this.videoBtn?.classList.toggle('hover:bg-red-700', off);
+        this.videoBtn?.classList.toggle('bg-slate-700', !off);
+        this.videoBtn?.classList.toggle('hover:bg-slate-600', !off);
+        if (this.videoBtn) {
+            this.videoBtn.title = off ? 'Turn Camera On' : 'Turn Camera Off';
         }
     }
 
@@ -615,20 +655,18 @@ class WebRTCCallManager {
     }
 
     updateCallUI() {
-        this.declineBtn.classList.add('hidden');
-        this.acceptBtn.classList.add('hidden');
-        this.hangupBtn.classList.remove('hidden');
+        this.declineBtn?.classList.add('hidden');
+        this.acceptBtn?.classList.add('hidden');
+        this.hangupBtn?.classList.remove('hidden');
+        this.showMediaControls();
 
         if (this.isVideo) {
             this.videosContainer?.classList.remove('hidden');
             this.audioPulse?.classList.add('hidden');
-            this.videoBtn?.classList.remove('hidden');
         } else {
             this.videosContainer?.classList.add('hidden');
             this.audioPulse?.classList.remove('hidden');
-            this.videoBtn?.classList.add('hidden');
         }
-        this.muteBtn?.classList.remove('hidden');
     }
 
     cleanup() {

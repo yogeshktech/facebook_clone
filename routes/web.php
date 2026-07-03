@@ -129,6 +129,7 @@ Route::middleware('auth')->group(function () {
     Route::get('/chat/{conversation}/messages', [ChatController::class, 'messages'])->name('chat.messages');
     Route::get('/chat/{conversation}', [ChatController::class, 'show'])->name('chat.show');
     Route::post('/chat/start/{user}', [ChatController::class, 'start'])->name('chat.start');
+    Route::post('/chat/{conversation}/typing', [ChatController::class, 'typing'])->name('chat.typing');
     Route::post('/chat/{conversation}/send', [ChatController::class, 'send'])->name('chat.send');
     Route::post('/chat/call/signal', [CallSignalingController::class, 'signal'])->name('chat.call.signal');
 

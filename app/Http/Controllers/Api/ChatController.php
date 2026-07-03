@@ -79,9 +79,25 @@ class ChatController extends Controller
         ]);
 
         $conversation->touch();
-        broadcast(new MessageSent($message))->toOthers();
 
-        NotificationService::chatMessage($conversation, auth()->user(), $message);
+        $messageId = $message->id;
+        $conversationId = $conversation->id;
+        $senderId = auth()->id();
+
+        dispatch(function () use ($messageId, $conversationId, $senderId) {
+            $message = Message::with('user')->find($messageId);
+            if (! $message) {
+                return;
+            }
+
+            broadcast(new MessageSent($message))->toOthers();
+
+            $conversation = Conversation::find($conversationId);
+            $sender = User::find($senderId);
+            if ($conversation && $sender) {
+                NotificationService::chatMessage($conversation, $sender, $message);
+            }
+        })->afterResponse();
 
         return response()->json($message->load('user'), 201);
     }

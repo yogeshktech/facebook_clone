@@ -19,7 +19,12 @@
             <div class="flex items-center gap-3">
                 <a href="{{ route('chat.index') }}" class="text-gray-500 hover:text-fb-blue">&larr;</a>
                 <img src="{{ $otherUser?->avatar_url }}" alt="" class="w-10 h-10 rounded-full object-cover">
-                <h2 class="font-semibold">{{ $otherUser?->name }}</h2>
+                <div>
+                    <h2 class="font-semibold leading-tight">{{ $otherUser?->name }}</h2>
+                    <p id="chat-presence" class="text-xs mt-0.5 {{ ($presence['online'] ?? false) ? 'text-green-600' : 'text-gray-500' }}">
+                        {{ $presence['label'] ?? 'Offline' }}
+                    </p>
+                </div>
             </div>
             @if($otherUser)
                 <div class="flex items-center gap-2">
@@ -69,6 +74,7 @@
     const authUserId = {{ auth()->id() }};
     const messagesUrl = @json(route('chat.messages', $conversation));
     const sendUrl = @json(route('chat.send', $conversation));
+    const typingUrl = @json(route('chat.typing', $conversation));
     const csrfToken = document.querySelector('meta[name="csrf-token"]').content;
     const container = document.getElementById('chat-messages');
     const form = document.getElementById('chat-form');
@@ -108,17 +114,42 @@
         return `${hours}:${minutes} ${ampm}`;
     }
 
-    function sendTypingWhisper(isTyping) {
-        if (!window.Echo) return;
-        try {
-            window.Echo.private(`conversation.${conversationId}`)
-                .whisper('typing', {
-                    user_id: authUserId,
-                    typing: isTyping
-                });
-        } catch (e) {
-            console.error('Failed to send typing whisper', e);
+    let conversationChannel = null;
+    let typingSendTimer = null;
+    let lastTypingSent = false;
+
+    function updatePresence(presence) {
+        const el = document.getElementById('chat-presence');
+        if (!el || !presence) return;
+        el.textContent = presence.label || (presence.online ? 'Online' : 'Offline');
+        el.classList.toggle('text-green-600', !!presence.online);
+        el.classList.toggle('text-gray-500', !presence.online);
+    }
+
+    function sendTypingSignal(isTyping) {
+        if (lastTypingSent === isTyping) return;
+        lastTypingSent = isTyping;
+
+        fetch(typingUrl, {
+            method: 'POST',
+            credentials: 'same-origin',
+            headers: {
+                'Content-Type': 'application/json',
+                'Accept': 'application/json',
+                'X-CSRF-TOKEN': csrfToken,
+                'X-Requested-With': 'XMLHttpRequest',
+            },
+            body: JSON.stringify({ typing: isTyping }),
+        }).catch(() => {});
+    }
+
+    function queueTypingSignal(isTyping) {
+        clearTimeout(typingSendTimer);
+        if (isTyping) {
+            sendTypingSignal(true);
+            return;
         }
+        typingSendTimer = setTimeout(() => sendTypingSignal(false), 250);
     }
 
     async function prepareFile(file) {
@@ -183,7 +214,7 @@
             if (isCurrentlyTyping) {
                 isCurrentlyTyping = false;
                 clearTimeout(typingTimeout);
-                sendTypingWhisper(false);
+                queueTypingSignal(false);
             }
 
             const msg = data.message;
@@ -356,6 +387,7 @@
             const hadNew = data.messages.length > 0;
             data.messages.forEach(renderMessage);
             updateAllStatuses(data.statuses);
+            updatePresence(data.presence);
             if (hadNew && isNearBottom) scrollToBottom();
         } catch (e) {}
     }
@@ -364,10 +396,11 @@
 
     if (window.Echo) {
         clearInterval(pollingInterval);
-        pollingInterval = setInterval(fetchNewMessages, 15000);
+        pollingInterval = setInterval(fetchNewMessages, 4000);
 
         try {
-            window.Echo.private(`conversation.${conversationId}`)
+            conversationChannel = window.Echo.private(`conversation.${conversationId}`);
+            conversationChannel
                 .listen('.message.sent', (data) => {
                     if (document.getElementById('msg-' + data.id)) return;
 
@@ -390,7 +423,7 @@
                     if (isNearBottom) scrollToBottom();
                     fetchNewMessages();
                 })
-                .listenForWhisper('typing', (e) => {
+                .listen('.user.typing', (e) => {
                     if (e.user_id !== authUserId) {
                         if (e.typing) {
                             typingBubble.classList.remove('hidden');
@@ -423,18 +456,18 @@
         if (hasText) {
             if (!isCurrentlyTyping) {
                 isCurrentlyTyping = true;
-                sendTypingWhisper(true);
+                queueTypingSignal(true);
             }
             clearTimeout(typingTimeout);
             typingTimeout = setTimeout(() => {
                 isCurrentlyTyping = false;
-                sendTypingWhisper(false);
+                queueTypingSignal(false);
             }, 3000);
         } else {
             if (isCurrentlyTyping) {
                 isCurrentlyTyping = false;
                 clearTimeout(typingTimeout);
-                sendTypingWhisper(false);
+                queueTypingSignal(false);
             }
         }
     });
