@@ -30,19 +30,22 @@ BROADCAST_CONNECTION=reverb
 QUEUE_CONNECTION=database
 CACHE_STORE=file
 SESSION_DRIVER=file
-```
 
-Use `CACHE_STORE=file` and `SESSION_DRIVER=file` on a single server — **not** `database` for both (adds DB load on every request).
+REVERB_APP_ID=newbook-live
+REVERB_APP_KEY=your-key
+REVERB_APP_SECRET=your-secret
+REVERB_SERVER_HOST=0.0.0.0
+REVERB_SERVER_PORT=8080
 
-Reverb keys must match:
+# Browser (public domain via nginx /app proxy)
+REVERB_CLIENT_HOST=newbook.workarya.com
+REVERB_CLIENT_PORT=443
+REVERB_CLIENT_SCHEME=https
 
-```env
-REVERB_APP_ID=...
-REVERB_APP_KEY=...
-REVERB_APP_SECRET=...
-REVERB_HOST=newbook.workarya.com
-REVERB_PORT=443
-REVERB_SCHEME=https
+# PHP queue worker → Reverb API (same server, internal)
+REVERB_BROADCAST_HOST=127.0.0.1
+REVERB_BROADCAST_PORT=8080
+REVERB_BROADCAST_SCHEME=http
 ```
 
 After changes:
@@ -50,6 +53,39 @@ After changes:
 ```bash
 php artisan config:clear
 php artisan cache:clear
+php artisan queue:restart
+```
+
+## Fix: `Address already in use` on port 8080
+
+Reverb is **already running**. Do not start it twice.
+
+```bash
+sudo supervisorctl status          # newbook-reverb should be RUNNING
+ss -tlnp | grep 8080               # see what holds port 8080
+```
+
+Run **only** the queue worker in a second process:
+
+```bash
+php artisan queue:work database --sleep=1 --tries=3
+```
+
+Never run `reverb:start` manually if Supervisor already runs it.
+
+## Fix: `MessageSent` / `LiveNotification` queue jobs FAIL
+
+Cause: queue worker was trying to reach Reverb at the **public HTTPS URL** instead of `127.0.0.1:8080`.
+
+1. Set `REVERB_BROADCAST_HOST=127.0.0.1` (see `.env` above)
+2. `php artisan config:clear`
+3. Ensure Reverb is running: `ss -tlnp | grep 8080`
+4. Retry failed jobs:
+
+```bash
+php artisan queue:retry all
+# or clear old failures:
+php artisan queue:flush
 ```
 
 ## Nginx

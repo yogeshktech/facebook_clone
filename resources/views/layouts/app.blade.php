@@ -39,9 +39,9 @@
         $reverbConfig = config('broadcasting.connections.reverb');
         $reverbPublicConfig = [
             'key' => $reverbConfig['key'] ?? null,
-            'host' => $reverbConfig['options']['host'] ?? null,
-            'port' => $reverbConfig['options']['port'] ?? null,
-            'scheme' => $reverbConfig['options']['scheme'] ?? null,
+            'host' => env('REVERB_CLIENT_HOST', env('REVERB_HOST')),
+            'port' => env('REVERB_CLIENT_PORT', env('REVERB_PORT', 443)),
+            'scheme' => env('REVERB_CLIENT_SCHEME', env('REVERB_SCHEME', 'https')),
         ];
     @endphp
     <script>
