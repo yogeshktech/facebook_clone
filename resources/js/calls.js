@@ -199,9 +199,26 @@ class WebRTCCallManager {
         return state === 'connected';
     }
 
+    async waitForEcho(maxMs = 10000) {
+        if (this.isEchoConnected()) return true;
+
+        const start = Date.now();
+        while (Date.now() - start < maxMs) {
+            await new Promise((resolve) => setTimeout(resolve, 400));
+            if (this.isEchoConnected()) return true;
+        }
+
+        return false;
+    }
+
     async ensureCallReady() {
-        if (!window.Echo || typeof window.Echo.private !== 'function' || !window.authUserId) {
-            alert('Calls need real-time server. Set BROADCAST_CONNECTION=reverb in .env.');
+        if (!window.authUserId) {
+            alert('Please log in to make calls.');
+            return false;
+        }
+
+        if (!window.Echo || typeof window.Echo.private !== 'function') {
+            alert('Call server not loaded. Hard refresh (Ctrl+Shift+R). On live: check REVERB_APP_KEY and npm run build on server.');
             return false;
         }
 
@@ -212,16 +229,16 @@ class WebRTCCallManager {
             const data = await res.json().catch(() => ({}));
 
             if (!res.ok || !data.ok) {
-                alert(data.message || 'Reverb is not running. Run: php artisan reverb:start');
+                alert(data.message || 'Reverb is offline on the server. Run: sudo supervisorctl start newbook-reverb');
                 return false;
             }
         } catch (e) {
-            alert('Could not check call server. Run: php artisan reverb:start');
+            alert('Could not reach call server. Check your internet connection and try again.');
             return false;
         }
 
-        if (!this.isEchoConnected()) {
-            alert('Connecting to call server… Please wait a few seconds and try again.');
+        if (!await this.waitForEcho()) {
+            alert('WebSocket not connected. On live server: nginx must proxy /app to port 8080 and Reverb must be running (supervisorctl status newbook-reverb).');
             return false;
         }
 
@@ -548,7 +565,7 @@ class WebRTCCallManager {
                 caller_id: this.callerUserId,
             });
             if (!sent.ok) {
-                throw new Error(sent.message || 'Could not reach call server. Run: php artisan reverb:start');
+                throw new Error(sent.message || 'Could not reach call server. On live: start Reverb (supervisorctl start newbook-reverb) and check nginx /app proxy.');
             }
         } catch (e) {
             console.error('Failed to start call:', e);

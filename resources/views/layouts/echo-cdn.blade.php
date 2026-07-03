@@ -5,9 +5,6 @@
 (function () {
     if (!window.authUserId) return;
 
-    // echo.iife.js exposes a module object on global Echo — only skip if a real instance exists
-    if (window.Echo && typeof window.Echo.private === 'function') return;
-
     const runtime = window.reverbConfig || {};
     const reverbKey = runtime.key;
     if (!reverbKey) {
@@ -28,6 +25,11 @@
     if (!EchoClass || typeof EchoClass !== 'function') {
         console.warn('Laravel Echo failed to load from CDN.');
         return;
+    }
+
+    // Replace any Echo instance (e.g. Vite bundle built with local REVERB_* values)
+    if (window.Echo?.disconnect) {
+        try { window.Echo.disconnect(); } catch (e) {}
     }
 
     window.Echo = new EchoClass({

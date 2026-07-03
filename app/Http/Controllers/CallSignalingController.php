@@ -13,6 +13,14 @@ class CallSignalingController extends Controller
 {
     public function health(): JsonResponse
     {
+        $key = config('broadcasting.connections.reverb.key');
+        if (! $key) {
+            return response()->json([
+                'ok' => false,
+                'message' => 'REVERB_APP_KEY is missing. Set it in .env and run: php artisan config:clear',
+            ], 503);
+        }
+
         $host = config('broadcasting.connections.reverb.options.host', '127.0.0.1');
         $port = (int) config('broadcasting.connections.reverb.options.port', 8080);
 
@@ -26,7 +34,7 @@ class CallSignalingController extends Controller
 
         return response()->json([
             'ok' => false,
-            'message' => 'Reverb is not running. Open a terminal and run: php artisan reverb:start',
+            'message' => 'Reverb is not running on this server. Run: sudo supervisorctl start newbook-reverb (or php artisan reverb:start)',
         ], 503);
     }
 
@@ -67,7 +75,7 @@ class CallSignalingController extends Controller
         if (! $this->reverbReachable()) {
             return response()->json([
                 'success' => false,
-                'message' => 'Reverb is not running. Open a terminal and run: php artisan reverb:start',
+                'message' => 'Reverb is offline. On the server: sudo supervisorctl start newbook-reverb',
             ], 503);
         }
 
@@ -103,7 +111,7 @@ class CallSignalingController extends Controller
         if (! $broadcastSuccess) {
             return response()->json([
                 'success' => false,
-                'message' => 'Signaling server is offline. Please make sure Laravel Reverb is running.',
+                'message' => 'Could not reach call server (Reverb broadcast failed). Check REVERB_BROADCAST_HOST=127.0.0.1 and supervisor newbook-reverb.',
             ], 503);
         }
 
