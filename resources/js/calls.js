@@ -140,8 +140,12 @@ class WebRTCCallManager {
     }
 
     init() {
+        if (this._uiBound) return;
+
         this.overlay = document.getElementById('call-overlay');
         if (!this.overlay) return;
+
+        this._uiBound = true;
 
         this.avatar = document.getElementById('call-user-avatar');
         this.userName = document.getElementById('call-user-name');
@@ -158,11 +162,33 @@ class WebRTCCallManager {
         this.videoBtn = document.getElementById('toggle-video-btn');
         this.hangupBtn = document.getElementById('hangup-call-btn');
 
-        this.declineBtn.onclick = () => this.declineCall();
-        this.acceptBtn.onclick = () => this.acceptCall();
-        this.muteBtn.onclick = () => this.toggleMute();
-        this.videoBtn.onclick = () => this.toggleVideo();
-        this.hangupBtn.onclick = () => this.hangupCall();
+        this.declineBtn?.addEventListener('click', (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            this.declineCall();
+        });
+        this.acceptBtn?.addEventListener('click', (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            this.acceptCall();
+        });
+        this.muteBtn?.addEventListener('click', (e) => {
+            e.preventDefault();
+            this.toggleMute();
+        });
+        this.videoBtn?.addEventListener('click', (e) => {
+            e.preventDefault();
+            this.toggleVideo();
+        });
+        this.hangupBtn?.addEventListener('click', (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            if (this.isIncoming && !this.isCallActive) {
+                this.declineCall();
+            } else {
+                this.hangupCall();
+            }
+        });
 
         this.bindChatCallButtons();
         this.registerSignalingListener();
@@ -361,11 +387,50 @@ class WebRTCCallManager {
     }
 
     showMediaControls() {
-        if (this.localStream) {
-            this.muteBtn?.classList.remove('hidden');
-        }
-        if (this.isVideo) {
+        this.muteBtn?.classList.remove('hidden');
+        if (this.isVideo && this.localStream?.getVideoTracks().length) {
             this.videoBtn?.classList.remove('hidden');
+        } else {
+            this.videoBtn?.classList.add('hidden');
+        }
+    }
+
+    mediaErrorMessage(error) {
+        if (!error) return 'Could not access microphone/camera.';
+        if (error.name === 'NotAllowedError' || error.name === 'PermissionDeniedError') {
+            return 'Microphone/camera blocked. Click the lock icon in the address bar and allow access, then try again.';
+        }
+        if (error.name === 'NotFoundError' || error.name === 'DevicesNotFoundError') {
+            return 'No microphone or camera found. Connect a device and try again.';
+        }
+        if (error.name === 'NotReadableError') {
+            return 'Microphone/camera is in use by another app. Close it and try again.';
+        }
+        return error.message || 'Could not access microphone/camera.';
+    }
+
+    async getLocalMedia(isVideo) {
+        if (!navigator.mediaDevices?.getUserMedia) {
+            throw new Error('This browser does not support calls.');
+        }
+
+        try {
+            return await navigator.mediaDevices.getUserMedia({
+                audio: true,
+                video: isVideo,
+            });
+        } catch (error) {
+            if (isVideo) {
+                try {
+                    return await navigator.mediaDevices.getUserMedia({
+                        audio: true,
+                        video: false,
+                    });
+                } catch (audioOnlyError) {
+                    throw audioOnlyError;
+                }
+            }
+            throw error;
         }
     }
 
@@ -420,19 +485,18 @@ class WebRTCCallManager {
         this.declineBtn.classList.add('hidden');
         this.acceptBtn.classList.add('hidden');
         this.hangupBtn.classList.remove('hidden');
-        this.showMediaControls();
+        this.muteBtn.classList.add('hidden');
+        this.videoBtn.classList.add('hidden');
 
         if (!this.targetOffline) {
             this.toneGen.startDial();
         }
 
         try {
-            this.localStream = await navigator.mediaDevices.getUserMedia({
-                audio: true,
-                video: isVideo,
-            });
+            this.localStream = await this.getLocalMedia(isVideo);
 
             this.showLocalVideoPreview();
+            this.showMediaControls();
 
             this.createPeerConnection();
 
@@ -538,11 +602,11 @@ class WebRTCCallManager {
                     this.setPeerInfo({ name: from_user.name, avatar: from_user.avatar_url });
                     this.status.textContent = `Incoming ${this.isVideo ? 'Video' : 'Audio'} Call...`;
 
-                    this.declineBtn.classList.remove('hidden');
-                    this.acceptBtn.classList.remove('hidden');
-                    this.hangupBtn.classList.add('hidden');
-                    this.muteBtn.classList.add('hidden');
-                    this.videoBtn.classList.add('hidden');
+                    this.declineBtn?.classList.remove('hidden');
+                    this.acceptBtn?.classList.remove('hidden');
+                    this.hangupBtn?.classList.add('hidden');
+                    this.muteBtn?.classList.add('hidden');
+                    this.videoBtn?.classList.add('hidden');
 
                     this.toneGen.startRing();
                     break;
@@ -573,7 +637,12 @@ class WebRTCCallManager {
                     if (!(this.isCallActive || this.isCalling || this.isIncoming)) break;
                     this.cleanup();
                     if (from_user?.id !== window.authUserId) {
-                        alert('User is busy or declined the call.');
+                        const reason = data?.reason;
+                        if (reason === 'busy') {
+                            alert('User is on another call.');
+                        } else if (reason !== 'missed') {
+                            alert('Call declined.');
+                        }
                     }
                     break;
 
@@ -600,6 +669,7 @@ class WebRTCCallManager {
 
     async acceptCall() {
         if (!this.isIncoming || !this.remoteUserId || !this.incomingOfferSdp) return;
+        if (this._endingCall) return;
 
         this.toneGen.stop();
         this.acceptBtn.classList.add('hidden');
@@ -608,10 +678,7 @@ class WebRTCCallManager {
         this.status.textContent = 'Connecting...';
 
         try {
-            this.localStream = await navigator.mediaDevices.getUserMedia({
-                audio: true,
-                video: this.isVideo,
-            });
+            this.localStream = await this.getLocalMedia(this.isVideo);
 
             this.showLocalVideoPreview();
             this.showMediaControls();
@@ -636,8 +703,9 @@ class WebRTCCallManager {
             this.updateCallUI();
         } catch (e) {
             console.error('Failed to accept call:', e);
-            this.cleanup();
-            alert('Failed to connect call. Please check device permissions.');
+            const message = this.mediaErrorMessage(e);
+            await this.endCall('decline', { reason: 'permission_denied' });
+            alert(message);
         }
     }
 
@@ -669,8 +737,13 @@ class WebRTCCallManager {
         const payload = ['hangup', 'decline'].includes(signalType) ? this.callMeta(extra) : extra;
 
         this.cleanup();
-        if (remoteId) {
-            this.sendSignal(signalType, payload, remoteId).catch(() => {});
+
+        try {
+            if (remoteId) {
+                await this.sendSignal(signalType, payload, remoteId);
+            }
+        } finally {
+            this._endingCall = false;
         }
     }
 
