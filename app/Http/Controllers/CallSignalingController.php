@@ -71,13 +71,18 @@ class CallSignalingController extends Controller
             ], 503);
         }
 
+        $data = $validated['data'] ?? [];
+        if (isset($data['sdp']) && is_string($data['sdp'])) {
+            $data['sdp'] = $this->normalizeSdp($data['sdp']);
+        }
+
         $broadcastSuccess = true;
         try {
             broadcast(new CallSignalingEvent(
                 auth()->id(),
                 (int) $validated['to_user_id'],
                 $validated['type'],
-                $validated['data'] ?? []
+                $data
             ))->toOthers();
         } catch (\Throwable $e) {
             $broadcastSuccess = false;
@@ -89,7 +94,7 @@ class CallSignalingController extends Controller
                 auth()->id(),
                 (int) $validated['to_user_id'],
                 $validated['type'],
-                $validated['data'] ?? []
+                $data
             );
         } catch (\Throwable $e) {
             logger()->error("Failed to record call history: " . $e->getMessage());
@@ -133,5 +138,16 @@ class CallSignalingController extends Controller
         fclose($socket);
 
         return true;
+    }
+
+    private function normalizeSdp(string $sdp): string
+    {
+        $sdp = str_replace(["\r\n", "\r"], "\n", $sdp);
+        $lines = array_values(array_filter(
+            array_map(static fn (string $line) => rtrim($line), explode("\n", $sdp)),
+            static fn (string $line) => $line !== ''
+        ));
+
+        return implode("\r\n", $lines)."\r\n";
     }
 }

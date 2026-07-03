@@ -15,6 +15,12 @@ return Application::configure(basePath: dirname(__DIR__))
     ->withMiddleware(function (Middleware $middleware): void {
         $middleware->trustProxies(at: '*');
         $middleware->statefulApi();
+        $middleware->trimStrings(except: [
+            'password',
+            'password_confirmation',
+            'current_password',
+            'data.sdp',
+        ]);
         $middleware->redirectUsersTo('/feed');
         $middleware->alias([
             'admin' => \App\Http\Middleware\EnsureAdmin::class,

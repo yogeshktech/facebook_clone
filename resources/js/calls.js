@@ -200,7 +200,7 @@ class WebRTCCallManager {
     }
 
     async ensureCallReady() {
-        if (!window.Echo || !window.authUserId) {
+        if (!window.Echo || typeof window.Echo.private !== 'function' || !window.authUserId) {
             alert('Calls need real-time server. Set BROADCAST_CONNECTION=reverb in .env.');
             return false;
         }
@@ -241,7 +241,7 @@ class WebRTCCallManager {
     }
 
     registerSignalingListener() {
-        if (!window.Echo || !window.authUserId) {
+        if (!window.Echo || typeof window.Echo.private !== 'function') {
             console.warn('WebRTC calls need Reverb/Echo. Set BROADCAST_CONNECTION=reverb and run reverb:start.');
             return;
         }
@@ -292,6 +292,41 @@ class WebRTCCallManager {
             { urls: 'stun:stun.l.google.com:19302' },
             { urls: 'stun:stun1.l.google.com:19302' },
         ];
+    }
+
+    normalizeSdp(sdp) {
+        if (!sdp || typeof sdp !== 'string') return sdp;
+
+        let text = sdp;
+        if (text.includes('\\n')) {
+            text = text.replace(/\\n/g, '\n');
+        }
+
+        text = text.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
+        const lines = text.split('\n').map((line) => line.trimEnd()).filter((line) => line.length > 0);
+
+        return `${lines.join('\r\n')}\r\n`;
+    }
+
+    prepareRemoteSdp(sdp) {
+        const normalized = this.normalizeSdp(sdp);
+        const lines = normalized.split(/\r?\n/).filter((line) => {
+            const trimmed = line.trim();
+            if (!trimmed) return false;
+            // Legacy Plan-B ssrc/msid lines break setRemoteDescription on some Chromium builds
+            if (trimmed.startsWith('a=ssrc:') && trimmed.includes(' msid:')) return false;
+            if (trimmed.startsWith('a=ssrc-group:')) return false;
+            return true;
+        });
+
+        return `${lines.join('\r\n')}\r\n`;
+    }
+
+    async setRemoteSdp(type, sdp) {
+        const cleaned = this.prepareRemoteSdp(sdp);
+        await this.peerConnection.setRemoteDescription(
+            new RTCSessionDescription({ type, sdp: cleaned }),
+        );
     }
 
     callMeta(extra = {}) {
@@ -500,11 +535,14 @@ class WebRTCCallManager {
 
             this.createPeerConnection();
 
-            const offer = await this.peerConnection.createOffer();
+            const offer = await this.peerConnection.createOffer({
+                offerToReceiveAudio: true,
+                offerToReceiveVideo: isVideo,
+            });
             await this.peerConnection.setLocalDescription(offer);
 
             const sent = await this.sendSignal('offer', {
-                sdp: offer.sdp,
+                sdp: this.normalizeSdp(offer.sdp),
                 isVideo,
                 call_id: this.callId,
                 caller_id: this.callerUserId,
@@ -536,7 +574,7 @@ class WebRTCCallManager {
 
         this.peerConnection.onicecandidate = (event) => {
             if (event.candidate) {
-                this.sendSignal('candidate', event.candidate);
+                this.sendSignal('candidate', event.candidate.toJSON());
             }
         };
 
@@ -592,7 +630,7 @@ class WebRTCCallManager {
                     this.isIncoming = true;
                     this.remoteUserId = from_user.id;
                     this.isVideo = !!data.isVideo;
-                    this.incomingOfferSdp = data.sdp;
+                    this.incomingOfferSdp = this.prepareRemoteSdp(data.sdp);
                     this.callId = data.call_id || crypto.randomUUID();
                     this.callerUserId = from_user.id;
                     this.wasAnswered = false;
@@ -613,10 +651,7 @@ class WebRTCCallManager {
 
                 case 'answer':
                     if (!this.peerConnection) return;
-                    await this.peerConnection.setRemoteDescription(new RTCSessionDescription({
-                        type: 'answer',
-                        sdp: data.sdp,
-                    }));
+                    await this.setRemoteSdp('answer', data.sdp);
                     await this.flushIceCandidates();
                     this.wasAnswered = true;
                     this.isCalling = false;
@@ -685,16 +720,13 @@ class WebRTCCallManager {
 
             this.createPeerConnection();
 
-            await this.peerConnection.setRemoteDescription(new RTCSessionDescription({
-                type: 'offer',
-                sdp: this.incomingOfferSdp,
-            }));
+            await this.setRemoteSdp('offer', this.incomingOfferSdp);
 
             await this.flushIceCandidates();
 
             const answer = await this.peerConnection.createAnswer();
             await this.peerConnection.setLocalDescription(answer);
-            await this.sendSignal('answer', { sdp: answer.sdp });
+            await this.sendSignal('answer', { sdp: this.normalizeSdp(answer.sdp) });
 
             this.wasAnswered = true;
             this.isIncoming = false;

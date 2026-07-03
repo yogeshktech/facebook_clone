@@ -410,7 +410,7 @@
 
     let pollingInterval = setInterval(fetchNewMessages, 8000);
 
-    if (window.Echo) {
+    if (window.Echo && typeof window.Echo.private === 'function') {
         clearInterval(pollingInterval);
         pollingInterval = setInterval(fetchNewMessages, 15000);
 

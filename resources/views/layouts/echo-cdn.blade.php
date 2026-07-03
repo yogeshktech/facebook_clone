@@ -3,7 +3,10 @@
 <script src="https://cdn.jsdelivr.net/npm/laravel-echo@2.3.7/dist/echo.iife.js"></script>
 <script>
 (function () {
-    if (!window.authUserId || window.Echo) return;
+    if (!window.authUserId) return;
+
+    // echo.iife.js exposes a module object on global Echo — only skip if a real instance exists
+    if (window.Echo && typeof window.Echo.private === 'function') return;
 
     const runtime = window.reverbConfig || {};
     const reverbKey = runtime.key;
@@ -21,7 +24,12 @@
     const reverbScheme = runtime.scheme || (window.location.protocol === 'https:' ? 'https' : 'http');
 
     window.Pusher = Pusher;
-    const EchoClass = Echo.default || Echo;
+    const EchoClass = (typeof Echo !== 'undefined' && (Echo.default || Echo)) || null;
+    if (!EchoClass || typeof EchoClass !== 'function') {
+        console.warn('Laravel Echo failed to load from CDN.');
+        return;
+    }
+
     window.Echo = new EchoClass({
         broadcaster: 'reverb',
         key: reverbKey,

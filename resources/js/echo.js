@@ -14,7 +14,7 @@ const reverbPort = import.meta.env.VITE_REVERB_PORT || runtime.port || defaultPo
 const reverbScheme = import.meta.env.VITE_REVERB_SCHEME || runtime.scheme
     || (window.location.protocol === 'https:' ? 'https' : 'http');
 
-if (!window.Echo && reverbKey && window.authUserId) {
+if (!(window.Echo && typeof window.Echo.private === 'function') && reverbKey && window.authUserId) {
     window.Echo = new Echo({
         broadcaster: 'reverb',
         key: reverbKey,

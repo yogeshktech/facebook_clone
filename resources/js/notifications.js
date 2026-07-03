@@ -290,7 +290,7 @@ export function initNotificationBell() {
 
     setInterval(() => refresh(false), 8000);
 
-    if (window.Echo && window.authUserId) {
+    if (window.Echo && typeof window.Echo.private === 'function' && window.authUserId) {
         try {
             window.Echo.private(`notification.${window.authUserId}`)
                 .listen('.NotificationEvent', async (payload) => {
