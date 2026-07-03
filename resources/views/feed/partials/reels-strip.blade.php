@@ -65,27 +65,3 @@
 </div>
 
 @endif
-<script>
-new Swiper('.reelsSwiper', {
-
-    slidesPerView: 2.2,
-    spaceBetween: 12,
-
-    breakpoints: {
-
-        640: {
-            slidesPerView: 3.2
-        },
-
-        768: {
-            slidesPerView: 4.2
-        },
-
-        1024: {
-            slidesPerView: 5.2
-        }
-
-    }
-
-});
-</script>

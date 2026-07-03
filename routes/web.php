@@ -132,6 +132,8 @@ Route::middleware('auth')->group(function () {
     Route::post('/chat/{conversation}/typing', [ChatController::class, 'typing'])->name('chat.typing');
     Route::post('/chat/{conversation}/send', [ChatController::class, 'send'])->name('chat.send');
     Route::post('/chat/call/signal', [CallSignalingController::class, 'signal'])->name('chat.call.signal');
+    Route::get('/chat/call/health', [CallSignalingController::class, 'health'])->name('chat.call.health');
+    Route::get('/chat/users/{user}/presence', [CallSignalingController::class, 'presence'])->name('chat.user.presence');
 
     // Groups
     Route::get('/groups', [GroupController::class, 'index'])->name('groups.index');

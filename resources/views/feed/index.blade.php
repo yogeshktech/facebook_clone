@@ -87,7 +87,7 @@
                 const form = document.getElementById('create-post-form');
                 const alertEl = document.getElementById('post-form-alert');
                 const submitBtn = document.getElementById('post-submit-btn');
-                const contentInput = form ? .querySelector('[name="content"]');
+                const contentInput = form?.querySelector('[name="content"]');
                 const mediaInput = document.getElementById('post-media-input');
 
                 function showAlert(message, type) {
@@ -103,7 +103,7 @@
                     });
                 }
 
-                mediaInput ? .addEventListener('change', function(e) {
+                mediaInput?.addEventListener('change', function(e) {
                     const file = e.target.files[0];
                     const preview = document.getElementById('media-preview');
                     const img = document.getElementById('media-preview-img');
@@ -124,11 +124,11 @@
                     }
                 });
 
-                form ? .addEventListener('submit', async function(e) {
+                form?.addEventListener('submit', async function(e) {
                     e.preventDefault();
 
-                    const content = contentInput ? .value.trim() || '';
-                    const hasMedia = mediaInput ? .files ? .length > 0;
+                    const content = contentInput?.value.trim() || '';
+                    const hasMedia = mediaInput?.files?.length > 0;
 
                     if (!content && !hasMedia) {
                         showAlert('Please write something or attach a photo/video.', 'error');
@@ -140,7 +140,7 @@
 
                     try {
                         const formData = new FormData(form);
-                        const mediaFile = mediaInput ? .files ? . [0];
+                        const mediaFile = mediaInput?.files?.[0];
                         if (mediaFile) {
                             const prepared = await window.prepareMediaFile(mediaFile);
                             formData.set('media', prepared);
@@ -153,7 +153,7 @@
                             , headers: {
                                 'X-Requested-With': 'XMLHttpRequest'
                                 , 'Accept': 'application/json'
-                                , 'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]') ? .content || ''
+                                , 'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]')?.content || ''
                             }
                         });
 
@@ -439,7 +439,7 @@
         document.getElementById('leadModal').classList.add('hidden');
     }
 
-    document.getElementById('leadModalForm') ? .addEventListener('submit', async function(e) {
+    document.getElementById('leadModalForm')?.addEventListener('submit', async function(e) {
         e.preventDefault();
 
         const adId = document.getElementById('leadModalAdId').value;
@@ -457,7 +457,7 @@
                 , headers: {
                     'X-Requested-With': 'XMLHttpRequest'
                     , 'Accept': 'application/json'
-                    , 'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]') ? .content || ''
+                    , 'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]')?.content || ''
                 }
             });
 

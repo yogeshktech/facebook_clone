@@ -11,6 +11,43 @@ use Illuminate\Http\Request;
 
 class CallSignalingController extends Controller
 {
+    public function health(): JsonResponse
+    {
+        $host = config('broadcasting.connections.reverb.options.host', '127.0.0.1');
+        $port = (int) config('broadcasting.connections.reverb.options.port', 8080);
+
+        $socket = @fsockopen($host, $port, $errno, $errstr, 2);
+
+        if ($socket) {
+            fclose($socket);
+
+            return response()->json(['ok' => true]);
+        }
+
+        return response()->json([
+            'ok' => false,
+            'message' => 'Reverb is not running. Open a terminal and run: php artisan reverb:start',
+        ], 503);
+    }
+
+    public function presence(User $user): JsonResponse
+    {
+        abort_if($user->id === auth()->id(), 400);
+
+        if (! $this->canSignalTo($user)) {
+            return response()->json(['message' => 'Forbidden'], 403);
+        }
+
+        $online = $user->last_seen_at && $user->last_seen_at->gte(now()->subMinutes(5));
+
+        return response()->json([
+            'online' => $online,
+            'label' => $online ? 'Online' : ($user->last_seen_at
+                ? 'Last seen '.$user->last_seen_at->diffForHumans()
+                : 'Offline'),
+        ]);
+    }
+
     public function signal(Request $request): JsonResponse
     {
         $validated = $request->validate([
@@ -25,6 +62,13 @@ class CallSignalingController extends Controller
             return response()->json([
                 'message' => 'You can only call friends you have chatted with.',
             ], 403);
+        }
+
+        if (! $this->reverbReachable()) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Reverb is not running. Open a terminal and run: php artisan reverb:start',
+            ], 503);
         }
 
         $broadcastSuccess = true;
@@ -74,5 +118,20 @@ class CallSignalingController extends Controller
         }
 
         return Conversation::findBetweenUsers($user->id, $target->id) !== null;
+    }
+
+    private function reverbReachable(): bool
+    {
+        $host = config('broadcasting.connections.reverb.options.host', '127.0.0.1');
+        $port = (int) config('broadcasting.connections.reverb.options.port', 8080);
+        $socket = @fsockopen($host, $port, $errno, $errstr, 2);
+
+        if (! $socket) {
+            return false;
+        }
+
+        fclose($socket);
+
+        return true;
     }
 }

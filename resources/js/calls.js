@@ -120,6 +120,7 @@ class WebRTCCallManager {
         this.dialTimeout = null;
         this._endingCall = false;
         this._disconnectTimer = null;
+        this.targetOffline = false;
 
         this.overlay = null;
         this.avatar = null;
@@ -167,6 +168,52 @@ class WebRTCCallManager {
         this.registerSignalingListener();
     }
 
+    isEchoConnected() {
+        const state = window.Echo?.connector?.pusher?.connection?.state;
+        return state === 'connected';
+    }
+
+    async ensureCallReady() {
+        if (!window.Echo || !window.authUserId) {
+            alert('Calls need real-time server. Set BROADCAST_CONNECTION=reverb in .env.');
+            return false;
+        }
+
+        try {
+            const res = await fetch('/chat/call/health', {
+                headers: { 'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
+            });
+            const data = await res.json().catch(() => ({}));
+
+            if (!res.ok || !data.ok) {
+                alert(data.message || 'Reverb is not running. Run: php artisan reverb:start');
+                return false;
+            }
+        } catch (e) {
+            alert('Could not check call server. Run: php artisan reverb:start');
+            return false;
+        }
+
+        if (!this.isEchoConnected()) {
+            alert('Connecting to call server… Please wait a few seconds and try again.');
+            return false;
+        }
+
+        return true;
+    }
+
+    async fetchPresence(userId) {
+        try {
+            const res = await fetch(`/chat/users/${userId}/presence`, {
+                headers: { 'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
+            });
+            if (!res.ok) return null;
+            return await res.json();
+        } catch (e) {
+            return null;
+        }
+    }
+
     registerSignalingListener() {
         if (!window.Echo || !window.authUserId) {
             console.warn('WebRTC calls need Reverb/Echo. Set BROADCAST_CONNECTION=reverb and run reverb:start.');
@@ -192,19 +239,17 @@ class WebRTCCallManager {
             if (!btn || btn.dataset.callBound === '1') return;
             btn.dataset.callBound = '1';
 
-            btn.addEventListener('click', () => {
+            btn.addEventListener('click', async () => {
                 const userId = parseInt(btn.dataset.targetUserId, 10);
                 if (!userId) return;
 
-                if (!window.Echo) {
-                    alert('Voice/video calls need real-time server (Reverb). Ask admin to enable BROADCAST_CONNECTION=reverb.');
-                    return;
-                }
+                const presence = await this.fetchPresence(userId);
+                const targetOnline = presence?.online ?? btn.dataset.targetOnline === '1';
 
-                this.startCall(userId, isVideo, {
+                await this.startCall(userId, isVideo, {
                     name: btn.dataset.targetName || '',
                     avatar: btn.dataset.targetAvatar || '',
-                });
+                }, { targetOnline });
             });
         };
 
@@ -253,18 +298,23 @@ class WebRTCCallManager {
         }, 45000);
     }
 
-    startDialTimeout() {
+    startDialTimeout(ms = 60000) {
         this.clearCallTimeouts();
         this.dialTimeout = setTimeout(() => {
             if (this.isCalling && !this.wasAnswered) {
+                if (this.targetOffline) {
+                    this.status.textContent = 'User offline';
+                    setTimeout(() => this.hangupCall(), 1500);
+                    return;
+                }
                 this.hangupCall();
             }
-        }, 60000);
+        }, ms);
     }
 
     async sendSignal(type, data = null, remoteUserId = null) {
         const targetId = remoteUserId ?? this.remoteUserId;
-        if (!targetId) return false;
+        if (!targetId) return { ok: false, message: 'No call recipient.' };
 
         try {
             const res = await fetch('/chat/call/signal', {
@@ -285,14 +335,15 @@ class WebRTCCallManager {
 
             if (!res.ok) {
                 const err = await res.json().catch(() => ({}));
-                console.error('Call signal failed:', err.message || res.status);
-                return false;
+                const message = err.message || `Call signal failed (${res.status})`;
+                console.error('Call signal failed:', message);
+                return { ok: false, message };
             }
 
-            return true;
+            return { ok: true };
         } catch (e) {
             console.error('Failed to send call signal:', e);
-            return false;
+            return { ok: false, message: 'Network error while starting call.' };
         }
     }
 
@@ -338,10 +389,20 @@ class WebRTCCallManager {
         }
     }
 
-    async startCall(remoteUserId, isVideo = false, peerInfo = {}) {
+    async startCall(remoteUserId, isVideo = false, peerInfo = {}, options = {}) {
         if (this.isCallActive || this.isCalling || this.isIncoming || this._endingCall) return;
 
+        if (!await this.ensureCallReady()) return;
+
         this._endingCall = false;
+        this.targetOffline = false;
+
+        let targetOnline = options.targetOnline;
+        if (targetOnline === undefined) {
+            const presence = await this.fetchPresence(remoteUserId);
+            targetOnline = presence?.online ?? true;
+        }
+        this.targetOffline = !targetOnline;
 
         this.isCalling = true;
         this.remoteUserId = remoteUserId;
@@ -349,17 +410,21 @@ class WebRTCCallManager {
         this.callId = crypto.randomUUID();
         this.wasAnswered = false;
         this.callerUserId = window.authUserId;
-        this.startDialTimeout();
+        this.startDialTimeout(this.targetOffline ? 25000 : 60000);
 
         this.showOverlay();
         this.setPeerInfo(peerInfo);
-        this.status.textContent = 'Calling...';
+        this.status.textContent = this.targetOffline
+            ? 'Calling... (user offline)'
+            : 'Calling...';
         this.declineBtn.classList.add('hidden');
         this.acceptBtn.classList.add('hidden');
         this.hangupBtn.classList.remove('hidden');
         this.showMediaControls();
 
-        this.toneGen.startDial();
+        if (!this.targetOffline) {
+            this.toneGen.startDial();
+        }
 
         try {
             this.localStream = await navigator.mediaDevices.getUserMedia({
@@ -380,8 +445,8 @@ class WebRTCCallManager {
                 call_id: this.callId,
                 caller_id: this.callerUserId,
             });
-            if (!sent) {
-                throw new Error('Could not reach call server.');
+            if (!sent.ok) {
+                throw new Error(sent.message || 'Could not reach call server. Run: php artisan reverb:start');
             }
         } catch (e) {
             console.error('Failed to start call:', e);
@@ -680,6 +745,7 @@ class WebRTCCallManager {
         this.callId = null;
         this.wasAnswered = false;
         this.callerUserId = null;
+        this.targetOffline = false;
 
         if (this.peerConnection) {
             this.peerConnection.onconnectionstatechange = null;
