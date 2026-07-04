@@ -139,6 +139,7 @@ Route::middleware('auth')->group(function () {
     Route::patch('/chat/messages/{message}', [ChatController::class, 'editMessage'])->name('chat.messages.edit');
     Route::delete('/chat/messages/{message}', [ChatController::class, 'deleteMessage'])->name('chat.messages.delete');
     Route::post('/chat/call/signal', [CallSignalingController::class, 'signal'])->name('chat.call.signal');
+    Route::get('/chat/call/inbox', [CallSignalingController::class, 'inbox'])->name('chat.call.inbox');
     Route::get('/chat/call/health', [CallSignalingController::class, 'health'])->name('chat.call.health');
     Route::get('/chat/users/{user}/presence', [CallSignalingController::class, 'presence'])->name('chat.user.presence');
 

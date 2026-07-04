@@ -6,6 +6,8 @@ use App\Events\CallSignalingEvent;
 use App\Models\Conversation;
 use App\Models\User;
 use App\Services\CallHistoryService;
+use App\Services\CallInboxService;
+use App\Services\NotificationService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
@@ -29,13 +31,15 @@ class CallSignalingController extends Controller
         if ($socket) {
             fclose($socket);
 
-            return response()->json(['ok' => true]);
+            return response()->json(['ok' => true, 'reverb' => true]);
         }
 
+        // Inbox polling still works without Reverb.
         return response()->json([
-            'ok' => false,
-            'message' => 'Reverb is not running on this server. Run: sudo supervisorctl start newbook-reverb (or php artisan reverb:start)',
-        ], 503);
+            'ok' => true,
+            'reverb' => false,
+            'message' => 'Realtime server offline — calls use polling fallback.',
+        ]);
     }
 
     public function presence(User $user): JsonResponse
@@ -56,6 +60,17 @@ class CallSignalingController extends Controller
         ]);
     }
 
+    public function inbox(Request $request): JsonResponse
+    {
+        $after = $request->filled('after') ? (float) $request->query('after') : null;
+        $signals = app(CallInboxService::class)->pull(auth()->id(), $after);
+
+        return response()->json([
+            'signals' => $signals,
+            'server_time' => microtime(true),
+        ]);
+    }
+
     public function signal(Request $request): JsonResponse
     {
         $validated = $request->validate([
@@ -72,50 +87,74 @@ class CallSignalingController extends Controller
             ], 403);
         }
 
-        if (! $this->reverbReachable()) {
-            return response()->json([
-                'success' => false,
-                'message' => 'Reverb is offline. On the server: sudo supervisorctl start newbook-reverb',
-            ], 503);
-        }
-
         $data = $validated['data'] ?? [];
         if (isset($data['sdp']) && is_string($data['sdp'])) {
             $data['sdp'] = $this->normalizeSdp($data['sdp']);
         }
 
-        $broadcastSuccess = true;
+        $type = $validated['type'];
+        $fromUser = $request->user();
+        $toUserId = (int) $validated['to_user_id'];
+
+        $payload = [
+            'from_user' => [
+                'id' => $fromUser->id,
+                'name' => $fromUser->name,
+                'avatar_url' => $fromUser->avatar_url,
+            ],
+            'type' => $type,
+            'data' => $data,
+        ];
+
+        // Always persist to inbox so receiver gets the call even if WebSocket is down.
+        app(CallInboxService::class)->push($toUserId, $payload);
+
+        // Hangup/decline also notify the sender's other tabs via inbox.
+        if (in_array($type, ['hangup', 'decline'], true)) {
+            app(CallInboxService::class)->push($fromUser->id, $payload);
+        }
+
+        $broadcastSuccess = false;
         try {
             broadcast(new CallSignalingEvent(
-                auth()->id(),
-                (int) $validated['to_user_id'],
-                $validated['type'],
+                $fromUser->id,
+                $toUserId,
+                $type,
                 $data
             ))->toOthers();
+            $broadcastSuccess = true;
         } catch (\Throwable $e) {
-            $broadcastSuccess = false;
-            logger()->error("Call signaling broadcast failed: " . $e->getMessage());
+            logger()->warning('Call signaling broadcast failed (inbox fallback active): '.$e->getMessage());
+        }
+
+        if ($type === 'offer') {
+            try {
+                NotificationService::incomingCall(
+                    $target,
+                    $fromUser,
+                    (bool) ($data['isVideo'] ?? $data['is_video'] ?? false),
+                    (string) ($data['call_id'] ?? ''),
+                );
+            } catch (\Throwable $e) {
+                report($e);
+            }
         }
 
         try {
             app(CallHistoryService::class)->recordFromSignal(
-                auth()->id(),
-                (int) $validated['to_user_id'],
-                $validated['type'],
+                $fromUser->id,
+                $toUserId,
+                $type,
                 $data
             );
         } catch (\Throwable $e) {
-            logger()->error("Failed to record call history: " . $e->getMessage());
+            logger()->error('Failed to record call history: '.$e->getMessage());
         }
 
-        if (! $broadcastSuccess) {
-            return response()->json([
-                'success' => false,
-                'message' => 'Could not reach call server (Reverb broadcast failed). Check REVERB_BROADCAST_HOST=127.0.0.1 and supervisor newbook-reverb.',
-            ], 503);
-        }
-
-        return response()->json(['success' => true]);
+        return response()->json([
+            'success' => true,
+            'broadcast' => $broadcastSuccess,
+        ]);
     }
 
     private function canSignalTo(User $target): bool
@@ -131,21 +170,6 @@ class CallSignalingController extends Controller
         }
 
         return Conversation::findBetweenUsers($user->id, $target->id) !== null;
-    }
-
-    private function reverbReachable(): bool
-    {
-        $host = config('broadcasting.connections.reverb.options.host', '127.0.0.1');
-        $port = (int) config('broadcasting.connections.reverb.options.port', 8080);
-        $socket = @fsockopen($host, $port, $errno, $errstr, 2);
-
-        if (! $socket) {
-            return false;
-        }
-
-        fclose($socket);
-
-        return true;
     }
 
     private function normalizeSdp(string $sdp): string

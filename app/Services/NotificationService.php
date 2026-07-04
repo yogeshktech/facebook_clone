@@ -51,6 +51,29 @@ class NotificationService
         return $notification;
     }
 
+    public static function incomingCall(User $receiver, User $sender, bool $isVideo, string $callId): void
+    {
+        $kind = $isVideo ? 'Video' : 'Voice';
+        $conversation = Conversation::findBetweenUsers($receiver->id, $sender->id);
+        $url = $conversation
+            ? route('chat.show', $conversation)
+            : route('chat.index');
+
+        try {
+            self::notify(
+                receiver: $receiver,
+                sender: $sender,
+                type: 'incoming_call',
+                title: "Incoming {$kind} call",
+                message: "{$sender->name} is calling you…",
+                referenceId: $conversation?->id,
+                url: $url,
+            );
+        } catch (\Throwable $e) {
+            report($e);
+        }
+    }
+
     public static function chatMessage(Conversation $conversation, User $sender, Message $message): void
     {
         $conversation->loadMissing('users');

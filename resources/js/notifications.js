@@ -111,9 +111,19 @@ export async function alertUser(notification) {
     const body = notification.message || notification.body || '';
     const url = notification.url || '/notifications';
     const tag = notification.id ? `newbook-${notification.id}` : `newbook-${Date.now()}`;
+    const isIncomingCall = notification.type === 'incoming_call'
+        || (typeof title === 'string' && title.toLowerCase().includes('incoming') && title.toLowerCase().includes('call'));
 
     if (notification.id) {
         markNotified(notification.id);
+    }
+
+    // Wake call UI immediately (WebSocket may have missed the offer).
+    if (isIncomingCall && window.CallManager) {
+        try {
+            window.CallManager.init?.();
+            window.CallManager.checkPendingCall?.();
+        } catch (e) {}
     }
 
     showNotificationToast(notification);

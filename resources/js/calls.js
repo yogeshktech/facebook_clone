@@ -178,6 +178,10 @@ class WebRTCCallManager {
         this.audioRoute = 'phone';
         this.audioOutputs = [];
         this._deviceChangeHandler = null;
+        this._inboxAfter = 0;
+        this._inboxTimer = null;
+        this._seenSignalIds = new Set();
+        this._echoRetryTimer = null;
 
         this.overlay = null;
         this.minimizedEl = null;
@@ -321,6 +325,7 @@ class WebRTCCallManager {
 
         this.bindChatCallButtons();
         this.registerSignalingListener();
+        this.startInboxPolling();
     }
 
     isEchoConnected() {
@@ -358,7 +363,7 @@ class WebRTCCallManager {
             const data = await res.json().catch(() => ({}));
 
             if (!res.ok || !data.ok) {
-                alert(data.message || 'Reverb is offline on the server. Run: sudo supervisorctl start newbook-reverb');
+                alert(data.message || 'Call server is unavailable. Please try again.');
                 return false;
             }
         } catch (e) {
@@ -366,10 +371,9 @@ class WebRTCCallManager {
             return false;
         }
 
-        if (!await this.waitForEcho()) {
-            alert('WebSocket not connected. On live server: nginx must proxy /app to port 8080 and Reverb must be running (supervisorctl status newbook-reverb).');
-            return false;
-        }
+        // Prefer WebSocket when available; inbox polling works without it.
+        await this.waitForEcho(4000);
+        this.registerSignalingListener();
 
         return true;
     }
@@ -387,22 +391,121 @@ class WebRTCCallManager {
     }
 
     registerSignalingListener() {
+        if (this._signalingBound) return;
+
         if (!window.Echo || typeof window.Echo.private !== 'function') {
-            console.warn('WebRTC calls need Reverb/Echo. Set BROADCAST_CONNECTION=reverb and run reverb:start.');
+            this.scheduleEchoRetry();
             return;
         }
-
-        if (this._signalingBound) return;
-        this._signalingBound = true;
 
         try {
             window.Echo.private(`user-signaling.${window.authUserId}`)
                 .listen('.call.signal', (payload) => {
-                    this.handleIncomingSignal(payload);
+                    this.ingestSignal(payload);
                 });
+            this._signalingBound = true;
+
+            const pusher = window.Echo?.connector?.pusher;
+            pusher?.connection?.bind?.('connected', () => {
+                this._signalingBound = true;
+            });
+            pusher?.connection?.bind?.('disconnected', () => {
+                this._signalingBound = false;
+                this.scheduleEchoRetry();
+            });
         } catch (e) {
             console.warn('WebRTC signaling listener could not be registered.', e);
+            this.scheduleEchoRetry();
         }
+    }
+
+    scheduleEchoRetry() {
+        if (this._echoRetryTimer) return;
+        this._echoRetryTimer = setTimeout(() => {
+            this._echoRetryTimer = null;
+            if (!this._signalingBound) {
+                this.registerSignalingListener();
+            }
+        }, 3000);
+    }
+
+    startInboxPolling() {
+        if (this._inboxTimer) return;
+        this.pullInbox();
+        this._inboxTimer = setInterval(() => this.pullInbox(), 1500);
+    }
+
+    async pullInbox() {
+        if (!window.authUserId) return;
+
+        try {
+            const url = `/chat/call/inbox${this._inboxAfter ? `?after=${this._inboxAfter}` : ''}`;
+            const res = await fetch(url, {
+                headers: { 'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
+                credentials: 'same-origin',
+            });
+            if (!res.ok) return;
+
+            const data = await res.json();
+            const signals = Array.isArray(data.signals) ? data.signals : [];
+
+            for (const signal of signals) {
+                if (signal._at && signal._at > this._inboxAfter) {
+                    this._inboxAfter = signal._at;
+                }
+                this.ingestSignal(signal);
+            }
+
+            if (typeof data.server_time === 'number' && data.server_time > this._inboxAfter && !signals.length) {
+                // keep cursor moving only when we have signals; otherwise leave as-is
+            }
+        } catch (e) {
+            // network blip — next poll retries
+        }
+    }
+
+    ingestSignal(payload) {
+        if (!payload || !payload.type) return;
+
+        const callId = payload.data?.call_id || '';
+        const fromId = payload.from_user?.id || '';
+        let signalId = payload._id;
+        if (!signalId) {
+            if (payload.type === 'offer' || payload.type === 'answer') {
+                signalId = `${payload.type}:${callId}:${fromId}`;
+            } else if (payload.type === 'candidate') {
+                signalId = `candidate:${fromId}:${payload.data?.candidate || JSON.stringify(payload.data || {})}`;
+            } else if (payload.type === 'media_state') {
+                signalId = `media:${fromId}:${payload.data?.muted}:${payload.data?.video_off}:${payload._at || ''}`;
+            } else {
+                signalId = `${payload.type}:${callId}:${fromId}`;
+            }
+        }
+
+        if (this._seenSignalIds.has(signalId)) return;
+        this._seenSignalIds.add(signalId);
+
+        // Same logical offer/answer from Echo + inbox
+        if (callId && (payload.type === 'offer' || payload.type === 'answer')) {
+            this._seenSignalIds.add(`${payload.type}:${callId}:${fromId}`);
+        }
+
+        if (this._seenSignalIds.size > 300) {
+            const keep = [...this._seenSignalIds].slice(-120);
+            this._seenSignalIds = new Set(keep);
+        }
+
+        // Own hangup/decline already handled locally — ignore inbox echo when idle.
+        if (['hangup', 'decline'].includes(payload.type) && fromId === window.authUserId) {
+            if (!(this.isCallActive || this.isCalling || this.isIncoming)) return;
+        }
+
+        this.handleIncomingSignal(payload);
+    }
+
+    /** Called from notifications when an incoming_call alert arrives. */
+    checkPendingCall() {
+        this.pullInbox();
     }
 
     bindChatCallButtons() {

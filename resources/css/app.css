@@ -123,6 +123,17 @@
     border: 1px solid rgba(255, 255, 255, 0.08);
 }
 
+#pip-video-wrap {
+    width: 200px !important;
+    height: 150px !important;
+}
+
+#pip-video-wrap video {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+}
+
 /* Fullscreen call — solid opaque layer (mobile-safe, no transparent ghost UI) */
 .call-overlay {
     position: fixed;
