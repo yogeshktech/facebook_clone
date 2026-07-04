@@ -60,7 +60,7 @@ class CallSignalingController extends Controller
     {
         $validated = $request->validate([
             'to_user_id' => ['required', 'integer', 'exists:users,id'],
-            'type' => ['required', 'string', 'in:offer,answer,candidate,hangup,decline'],
+            'type' => ['required', 'string', 'in:offer,answer,candidate,hangup,decline,media_state'],
             'data' => ['nullable', 'array'],
         ]);
 

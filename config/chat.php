@@ -16,4 +16,11 @@ return [
 
     'encrypted_prefix' => 'nbenc:',
 
+    /** Minutes after send during which the sender may edit a message. */
+    'edit_window_minutes' => (int) env('CHAT_EDIT_WINDOW_MINUTES', 15),
+
+    /** Minutes after send during which the sender may delete for everyone. */
+    'delete_for_everyone_minutes' => (int) env('CHAT_DELETE_FOR_EVERYONE_MINUTES', 60),
+
 ];
+

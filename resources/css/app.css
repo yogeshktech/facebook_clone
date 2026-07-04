@@ -33,3 +33,113 @@
         @apply w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-fb-blue;
     }
 }
+
+/* Custom Calling Interface Animations & Styles */
+@keyframes call-pulse {
+    0% {
+        transform: scale(0.98);
+        box-shadow: 0 0 0 0 rgba(99, 102, 241, 0.5);
+    }
+    70% {
+        transform: scale(1.02);
+        box-shadow: 0 0 0 24px rgba(99, 102, 241, 0);
+    }
+    100% {
+        transform: scale(0.98);
+        box-shadow: 0 0 0 0 rgba(99, 102, 241, 0);
+    }
+}
+
+@keyframes ring-ripple {
+    0% {
+        transform: scale(0.85);
+        opacity: 0.6;
+    }
+    100% {
+        transform: scale(2.4);
+        opacity: 0;
+    }
+}
+
+@keyframes orb-float {
+    0%, 100% {
+        transform: translate(0, 0) scale(1);
+    }
+    33% {
+        transform: translate(30px, -50px) scale(1.15);
+    }
+    66% {
+        transform: translate(-20px, 20px) scale(0.9);
+    }
+}
+
+@keyframes heartbeat {
+    0%, 100% { transform: scale(1); }
+    14% { transform: scale(1.12); }
+    28% { transform: scale(1); }
+    42% { transform: scale(1.12); }
+    70% { transform: scale(1); }
+}
+
+.animate-call-pulse {
+    animation: call-pulse 2s infinite ease-in-out;
+}
+
+.animate-heartbeat {
+    animation: heartbeat 2s infinite ease-in-out;
+}
+
+.ripple-ring {
+    position: absolute;
+    width: 100%;
+    height: 100%;
+    border-radius: 50%;
+    border: 2px solid rgba(99, 102, 241, 0.35);
+    animation: ring-ripple 3s infinite cubic-bezier(0.21, 0.61, 0.35, 1);
+}
+
+.ripple-ring:nth-child(2) {
+    animation-delay: 1s;
+    border-color: rgba(139, 92, 246, 0.3);
+}
+
+.ripple-ring:nth-child(3) {
+    animation-delay: 2s;
+    border-color: rgba(59, 130, 246, 0.25);
+}
+
+.orb-indigo {
+    animation: orb-float 14s infinite ease-in-out;
+}
+
+.orb-cyan {
+    animation: orb-float 18s infinite ease-in-out;
+}
+
+.glass-panel {
+    background: rgba(15, 23, 42, 0.45);
+    backdrop-filter: blur(16px);
+    -webkit-backdrop-filter: blur(16px);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.call-minimized-bubble {
+    animation: call-mini-in 0.25s ease-out;
+    touch-action: manipulation;
+}
+
+.call-minimized-bubble:active {
+    transform: scale(0.98);
+}
+
+@keyframes call-mini-in {
+    from {
+        opacity: 0;
+        transform: translateY(12px) scale(0.92);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0) scale(1);
+    }
+}
+

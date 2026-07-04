@@ -21,6 +21,7 @@ use App\Http\Controllers\ReelController;
 use App\Http\Controllers\CallSignalingController;
 use App\Http\Controllers\VideoController;
 use App\Http\Controllers\SearchController;
+use App\Http\Controllers\SettingsController;
 use App\Http\Controllers\StoryController;
 use Illuminate\Support\Facades\Route;
 
@@ -124,13 +125,19 @@ Route::middleware('auth')->group(function () {
     Route::post('/videos/{video}/send/{user}', [VideoController::class, 'sendToFriend'])->name('videos.send');
 
     // Chat
+    Route::get('/settings', [SettingsController::class, 'index'])->name('settings.index');
     Route::get('/chat', [ChatController::class, 'index'])->name('chat.index');
     Route::get('/chat/media/{message}', [ChatMediaController::class, 'show'])->name('chat.media');
+    Route::post('/chat/group', [ChatController::class, 'createGroup'])->name('chat.group.create');
+    Route::post('/chat/{conversation}/members', [ChatController::class, 'addMembers'])->name('chat.members.add');
+    Route::delete('/chat/{conversation}', [ChatController::class, 'destroyConversation'])->name('chat.destroy');
     Route::get('/chat/{conversation}/messages', [ChatController::class, 'messages'])->name('chat.messages');
     Route::get('/chat/{conversation}', [ChatController::class, 'show'])->name('chat.show');
     Route::post('/chat/start/{user}', [ChatController::class, 'start'])->name('chat.start');
     Route::post('/chat/{conversation}/typing', [ChatController::class, 'typing'])->name('chat.typing');
     Route::post('/chat/{conversation}/send', [ChatController::class, 'send'])->name('chat.send');
+    Route::patch('/chat/messages/{message}', [ChatController::class, 'editMessage'])->name('chat.messages.edit');
+    Route::delete('/chat/messages/{message}', [ChatController::class, 'deleteMessage'])->name('chat.messages.delete');
     Route::post('/chat/call/signal', [CallSignalingController::class, 'signal'])->name('chat.call.signal');
     Route::get('/chat/call/health', [CallSignalingController::class, 'health'])->name('chat.call.health');
     Route::get('/chat/users/{user}/presence', [CallSignalingController::class, 'presence'])->name('chat.user.presence');

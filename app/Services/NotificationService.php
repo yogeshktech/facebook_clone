@@ -59,6 +59,10 @@ class NotificationService
             ? Str::limit($message->body, 80)
             : ($message->media_path ? 'Sent you a photo/video' : 'New message');
 
+        $title = $conversation->isGroup()
+            ? $sender->name.' in '.($conversation->name ?: 'Group')
+            : $sender->name.' messaged you';
+
         foreach ($conversation->users as $receiver) {
             if ($receiver->id === $sender->id) {
                 continue;
@@ -69,7 +73,7 @@ class NotificationService
                     receiver: $receiver,
                     sender: $sender,
                     type: 'message',
-                    title: $sender->name.' messaged you',
+                    title: $title,
                     message: $preview,
                     referenceId: $conversation->id,
                     url: route('chat.show', $conversation),

@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Events\MessageSent;
+use App\Events\MessageUpdated;
 use App\Events\UserTyping;
 use App\Models\Conversation;
 use App\Models\Message;
@@ -13,6 +14,7 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\DB;
 use Illuminate\View\View;
 
 class ChatController extends Controller
@@ -23,6 +25,7 @@ class ChatController extends Controller
 
         $conversations = $user
             ->conversations()
+            ->wherePivotNull('hidden_at')
             ->with(['users', 'latestMessage.user'])
             ->latest('updated_at')
             ->get();
@@ -35,15 +38,14 @@ class ChatController extends Controller
 
     public function show(Conversation $conversation): View
     {
-        abort_unless(
-            $conversation->users()->where('user_id', auth()->id())->exists(),
-            403
-        );
+        abort_unless($this->isMember($conversation), 403);
 
-        $conversation->load(['users' => fn ($q) => $q->withPivot('last_read_at')]);
+        $this->unhideConversation($conversation, auth()->id());
 
-        $messages = $conversation->messages()
-            ->with('user')
+        $conversation->load(['users' => fn ($q) => $q->withPivot(['last_read_at', 'hidden_at', 'role'])]);
+
+        $messages = $this->visibleMessagesQuery($conversation)
+            ->with(['user', 'replyTo.user'])
             ->latest('created_at')
             ->limit(100)
             ->get()
@@ -56,10 +58,31 @@ class ChatController extends Controller
             ->map(fn ($m) => $this->messagePayload($m, $conversation))
             ->values();
 
-        $otherUser = $conversation->users->where('id', '!=', auth()->id())->first();
-        $presence = $this->presencePayload($conversation);
+        $otherUser = $conversation->isGroup()
+            ? null
+            : $conversation->users->where('id', '!=', auth()->id())->first();
 
-        return view('chat.show', compact('conversation', 'initialMessages', 'otherUser', 'presence'));
+        $presence = $this->presencePayload($conversation);
+        $friends = User::whereIn('id', $this->getFriendIds(auth()->user()))
+            ->whereNotIn('id', $conversation->users->pluck('id'))
+            ->orderBy('name')
+            ->get();
+
+        $chatConfig = [
+            'edit_window_minutes' => (int) config('chat.edit_window_minutes', 15),
+            'delete_for_everyone_minutes' => (int) config('chat.delete_for_everyone_minutes', 60),
+            'is_group' => $conversation->isGroup(),
+            'can_manage_group' => $conversation->isGroup() && $conversation->isAdmin(auth()->id()),
+        ];
+
+        return view('chat.show', compact(
+            'conversation',
+            'initialMessages',
+            'otherUser',
+            'presence',
+            'friends',
+            'chatConfig'
+        ));
     }
 
     public function start(User $user): RedirectResponse
@@ -70,22 +93,122 @@ class ChatController extends Controller
 
         if (! $conversation) {
             $conversation = Conversation::create(['is_group' => false]);
-            $conversation->users()->attach([auth()->id(), $user->id]);
+            $conversation->users()->attach([
+                auth()->id() => ['role' => 'member'],
+                $user->id => ['role' => 'member'],
+            ]);
+        } else {
+            $this->unhideConversation($conversation, auth()->id());
         }
 
         return redirect()->route('chat.show', $conversation);
     }
 
+    public function createGroup(Request $request): RedirectResponse
+    {
+        $validated = $request->validate([
+            'name' => ['required', 'string', 'max:80'],
+            'user_ids' => ['required', 'array', 'min:1'],
+            'user_ids.*' => ['integer', 'exists:users,id'],
+        ]);
+
+        $friendIds = $this->getFriendIds($request->user());
+        $memberIds = collect($validated['user_ids'])
+            ->map(fn ($id) => (int) $id)
+            ->filter(fn ($id) => $id !== auth()->id() && in_array($id, $friendIds, true))
+            ->unique()
+            ->values();
+
+        if ($memberIds->isEmpty()) {
+            return back()->with('error', 'Select at least one friend for the group.');
+        }
+
+        $conversation = Conversation::create([
+            'name' => $validated['name'],
+            'is_group' => true,
+        ]);
+
+        $attach = [auth()->id() => ['role' => 'admin']];
+        foreach ($memberIds as $id) {
+            $attach[$id] = ['role' => 'member'];
+        }
+        $conversation->users()->attach($attach);
+
+        return redirect()->route('chat.show', $conversation)
+            ->with('success', 'Group created.');
+    }
+
+    public function addMembers(Request $request, Conversation $conversation): RedirectResponse|JsonResponse
+    {
+        abort_unless($this->isMember($conversation) && $conversation->isGroup(), 403);
+        abort_unless($conversation->isAdmin(auth()->id()), 403);
+
+        $validated = $request->validate([
+            'user_ids' => ['required', 'array', 'min:1'],
+            'user_ids.*' => ['integer', 'exists:users,id'],
+        ]);
+
+        $friendIds = $this->getFriendIds($request->user());
+        $existing = $conversation->users()->pluck('users.id')->all();
+
+        $toAdd = collect($validated['user_ids'])
+            ->map(fn ($id) => (int) $id)
+            ->filter(fn ($id) => $id !== auth()->id()
+                && in_array($id, $friendIds, true)
+                && ! in_array($id, $existing, true))
+            ->unique()
+            ->values();
+
+        if ($toAdd->isEmpty()) {
+            if ($request->expectsJson()) {
+                return response()->json(['error' => 'No new friends to add.'], 422);
+            }
+
+            return back()->with('error', 'No new friends to add.');
+        }
+
+        $attach = [];
+        foreach ($toAdd as $id) {
+            $attach[$id] = ['role' => 'member'];
+        }
+        $conversation->users()->attach($attach);
+        $conversation->touch();
+
+        if ($request->expectsJson()) {
+            return response()->json([
+                'ok' => true,
+                'added' => $toAdd->count(),
+                'members' => $conversation->users()->get(['users.id', 'users.name'])->map(fn ($u) => [
+                    'id' => $u->id,
+                    'name' => $u->name,
+                    'avatar_url' => $u->avatar_url,
+                ]),
+            ]);
+        }
+
+        return back()->with('success', $toAdd->count().' member(s) added.');
+    }
+
+    public function destroyConversation(Conversation $conversation): RedirectResponse
+    {
+        abort_unless($this->isMember($conversation), 403);
+
+        $conversation->users()->updateExistingPivot(auth()->id(), [
+            'hidden_at' => now(),
+        ]);
+
+        return redirect()->route('chat.index')->with('success', 'Chat deleted.');
+    }
+
     public function messages(Request $request, Conversation $conversation): JsonResponse
     {
-        abort_unless(
-            $conversation->users()->where('user_id', auth()->id())->exists(),
-            403
-        );
+        abort_unless($this->isMember($conversation), 403);
 
-        $conversation->load(['users' => fn ($q) => $q->withPivot('last_read_at')]);
+        $conversation->load(['users' => fn ($q) => $q->withPivot(['last_read_at', 'hidden_at', 'role'])]);
 
-        $query = $conversation->messages()->with('user:id,name')->latest('created_at');
+        $query = $this->visibleMessagesQuery($conversation)
+            ->with(['user:id,name', 'replyTo.user:id,name'])
+            ->latest('created_at');
 
         if ($request->filled('after_id')) {
             $query->where('id', '>', (int) $request->after_id);
@@ -95,7 +218,7 @@ class ChatController extends Controller
 
         if ($messages->isNotEmpty()) {
             $this->markIncomingDeliveredAndReadThrottled($conversation);
-            $conversation->load(['users' => fn ($q) => $q->withPivot('last_read_at')]);
+            $conversation->load(['users' => fn ($q) => $q->withPivot(['last_read_at', 'hidden_at', 'role'])]);
         }
 
         $statuses = $this->recentStatuses($conversation, $request);
@@ -109,10 +232,7 @@ class ChatController extends Controller
 
     public function typing(Request $request, Conversation $conversation): JsonResponse
     {
-        abort_unless(
-            $conversation->users()->where('user_id', auth()->id())->exists(),
-            403
-        );
+        abort_unless($this->isMember($conversation), 403);
 
         $validated = $request->validate([
             'typing' => ['required', 'boolean'],
@@ -135,14 +255,12 @@ class ChatController extends Controller
 
     public function send(Request $request, Conversation $conversation): RedirectResponse|JsonResponse
     {
-        abort_unless(
-            $conversation->users()->where('user_id', auth()->id())->exists(),
-            403
-        );
+        abort_unless($this->isMember($conversation), 403);
 
         $validated = $request->validate([
             'body' => ['nullable', 'string', 'max:5000'],
             'media' => ['nullable', 'file', 'mimes:jpg,jpeg,png,gif,webp,mp4,webm,mov', 'max:'.config('media.max_video_kb')],
+            'reply_to_id' => ['nullable', 'integer', 'exists:messages,id'],
         ]);
 
         if (! $request->filled('body') && ! $request->hasFile('media')) {
@@ -151,6 +269,16 @@ class ChatController extends Controller
             }
 
             return back()->with('error', 'Message or media is required.');
+        }
+
+        $replyToId = null;
+        if (! empty($validated['reply_to_id'])) {
+            $reply = Message::where('id', $validated['reply_to_id'])
+                ->where('conversation_id', $conversation->id)
+                ->first();
+            if ($reply && ! $reply->isDeletedForEveryone()) {
+                $replyToId = $reply->id;
+            }
         }
 
         $mediaPath = null;
@@ -173,19 +301,21 @@ class ChatController extends Controller
         $message = Message::create([
             'conversation_id' => $conversation->id,
             'user_id' => auth()->id(),
+            'reply_to_id' => $replyToId,
             'body' => $validated['body'] ?? '',
             'media_path' => $mediaPath,
             'media_type' => $mediaType,
         ]);
 
         $conversation->touch();
+        $this->unhideConversationForAll($conversation);
 
         $messageId = $message->id;
         $conversationId = $conversation->id;
         $senderId = auth()->id();
 
         dispatch(function () use ($messageId, $conversationId, $senderId) {
-            $message = Message::with('user')->find($messageId);
+            $message = Message::with(['user', 'replyTo.user'])->find($messageId);
             if (! $message) {
                 return;
             }
@@ -208,8 +338,8 @@ class ChatController extends Controller
         })->afterResponse();
 
         if ($request->expectsJson()) {
-            $message->load('user');
-            $conversation->load(['users' => fn ($q) => $q->withPivot('last_read_at')]);
+            $message->load(['user', 'replyTo.user']);
+            $conversation->load(['users' => fn ($q) => $q->withPivot(['last_read_at', 'hidden_at', 'role'])]);
 
             return response()->json([
                 'message' => $this->messagePayload($message, $conversation),
@@ -217,6 +347,111 @@ class ChatController extends Controller
         }
 
         return back();
+    }
+
+    public function editMessage(Request $request, Message $message): JsonResponse
+    {
+        abort_unless($this->isMember($message->conversation), 403);
+        abort_unless($message->canEditBy(auth()->id()), 403);
+
+        $validated = $request->validate([
+            'body' => ['required', 'string', 'max:5000'],
+        ]);
+
+        $message->update([
+            'body' => $validated['body'],
+            'edited_at' => now(),
+        ]);
+
+        $message->load(['user', 'replyTo.user']);
+
+        try {
+            broadcast(new MessageUpdated($message, 'edited'))->toOthers();
+        } catch (\Throwable $e) {
+            report($e);
+        }
+
+        $conversation = $message->conversation;
+        $conversation->load(['users' => fn ($q) => $q->withPivot(['last_read_at', 'hidden_at', 'role'])]);
+
+        return response()->json([
+            'message' => $this->messagePayload($message, $conversation),
+        ]);
+    }
+
+    public function deleteMessage(Request $request, Message $message): JsonResponse
+    {
+        abort_unless($this->isMember($message->conversation), 403);
+
+        $validated = $request->validate([
+            'scope' => ['required', 'in:me,everyone'],
+        ]);
+
+        $conversation = $message->conversation;
+        $conversation->load(['users' => fn ($q) => $q->withPivot(['last_read_at', 'hidden_at', 'role'])]);
+
+        if ($validated['scope'] === 'everyone') {
+            abort_unless($message->canDeleteForEveryoneBy(auth()->id()), 403);
+
+            $message->update([
+                'body' => '',
+                'media_path' => null,
+                'media_type' => null,
+                'deleted_for_everyone_at' => now(),
+                'deleted_by' => auth()->id(),
+                'edited_at' => null,
+            ]);
+
+            $message->load(['user', 'replyTo.user']);
+
+            try {
+                broadcast(new MessageUpdated($message, 'deleted_everyone'))->toOthers();
+            } catch (\Throwable $e) {
+                report($e);
+            }
+
+            return response()->json([
+                'message' => $this->messagePayload($message->fresh(['user', 'replyTo.user']), $conversation),
+            ]);
+        }
+
+        // Delete for me only — other users still see it.
+        DB::table('message_user_deletes')->updateOrInsert(
+            ['message_id' => $message->id, 'user_id' => auth()->id()],
+            ['created_at' => now(), 'updated_at' => now()]
+        );
+
+        return response()->json([
+            'ok' => true,
+            'id' => $message->id,
+            'scope' => 'me',
+        ]);
+    }
+
+    private function isMember(Conversation $conversation): bool
+    {
+        return $conversation->users()->where('user_id', auth()->id())->exists();
+    }
+
+    private function unhideConversation(Conversation $conversation, int $userId): void
+    {
+        $conversation->users()->updateExistingPivot($userId, ['hidden_at' => null]);
+    }
+
+    private function unhideConversationForAll(Conversation $conversation): void
+    {
+        DB::table('conversation_user')
+            ->where('conversation_id', $conversation->id)
+            ->whereNotNull('hidden_at')
+            ->update(['hidden_at' => null, 'updated_at' => now()]);
+    }
+
+    private function visibleMessagesQuery(Conversation $conversation)
+    {
+        $userId = auth()->id();
+
+        return $conversation->messages()
+            ->whereDoesntHave('hiddenForUsers', fn ($q) => $q->where('users.id', $userId));
     }
 
     private function getFriendIds(User $user): array
@@ -229,23 +464,46 @@ class ChatController extends Controller
 
     private function messagePayload(Message $message, Conversation $conversation): array
     {
+        $deleted = $message->isDeletedForEveryone();
+        $viewerId = auth()->id();
+
         $payload = [
             'id' => $message->id,
-            'body' => $message->body,
+            'body' => $deleted ? '' : $message->body,
             'message_type' => $message->message_type ?? 'text',
             'call_status' => $message->call_status,
             'call_is_video' => $message->call_is_video,
-            'call_label' => $message->isCall() ? $message->callLabelFor(auth()->id()) : null,
+            'call_label' => $message->isCall() ? $message->callLabelFor($viewerId) : null,
             'media_url' => $message->media_url,
-            'media_type' => $message->media_type,
+            'media_type' => $deleted ? null : $message->media_type,
             'user_id' => $message->user_id,
             'user_name' => $message->user?->name,
             'time' => $message->created_at->timezone(config('app.timezone'))->format('g:i A'),
-            'is_sender' => $message->user_id === auth()->id(),
+            'is_sender' => $message->user_id === $viewerId,
             'status' => null,
+            'is_edited' => ! $deleted && $message->edited_at !== null,
+            'deleted_for_everyone' => $deleted,
+            'can_edit' => $message->canEditBy($viewerId),
+            'can_delete_everyone' => $message->canDeleteForEveryoneBy($viewerId),
+            'reply_to' => null,
         ];
 
-        if ($message->user_id === auth()->id()) {
+        if (! $deleted && $message->reply_to_id) {
+            $reply = $message->relationLoaded('replyTo') ? $message->replyTo : $message->replyTo()->with('user')->first();
+            if ($reply) {
+                $payload['reply_to'] = [
+                    'id' => $reply->id,
+                    'body' => $reply->isDeletedForEveryone()
+                        ? 'This message was deleted'
+                        : \Illuminate\Support\Str::limit($reply->body ?: ($reply->media_path ? 'Media' : ''), 80),
+                    'user_name' => $reply->user?->name,
+                    'user_id' => $reply->user_id,
+                    'deleted_for_everyone' => $reply->isDeletedForEveryone(),
+                ];
+            }
+        }
+
+        if ($message->user_id === $viewerId && ! $deleted) {
             $payload['status'] = $this->deliveryStatus($message, $conversation);
         }
 
@@ -254,19 +512,26 @@ class ChatController extends Controller
 
     private function deliveryStatus(Message $message, Conversation $conversation): string
     {
-        $other = $conversation->users->where('id', '!=', auth()->id())->first();
+        $others = $conversation->users->where('id', '!=', auth()->id());
 
-        if (! $other) {
+        if ($others->isEmpty()) {
             return 'sent';
         }
 
-        $lastRead = $other->pivot?->last_read_at;
+        $allRead = $others->every(function ($other) use ($message) {
+            $lastRead = $other->pivot?->last_read_at;
 
-        if ($lastRead && $lastRead >= $message->created_at) {
+            return $lastRead && $lastRead >= $message->created_at;
+        });
+
+        if ($allRead) {
             return 'read';
         }
 
-        if ($message->delivered_at || $this->isUserOnline($other)) {
+        $anyDelivered = $message->delivered_at
+            || $others->contains(fn ($other) => $this->isUserOnline($other));
+
+        if ($anyDelivered) {
             return 'delivered';
         }
 
@@ -275,16 +540,28 @@ class ChatController extends Controller
 
     private function presencePayload(Conversation $conversation): array
     {
+        if ($conversation->isGroup()) {
+            $count = $conversation->users->count();
+
+            return [
+                'online' => false,
+                'label' => $count.' members',
+                'is_group' => true,
+                'member_count' => $count,
+            ];
+        }
+
         $other = $conversation->users->where('id', '!=', auth()->id())->first();
 
         if (! $other) {
-            return ['online' => false, 'label' => 'Offline'];
+            return ['online' => false, 'label' => 'Offline', 'is_group' => false];
         }
 
         $online = $this->isUserOnline($other);
 
         return [
             'online' => $online,
+            'is_group' => false,
             'label' => $online ? 'Online' : ($other->last_seen_at
                 ? 'Last seen '.$other->last_seen_at->diffForHumans()
                 : 'Offline'),
@@ -328,6 +605,7 @@ class ChatController extends Controller
 
         $statuses = $conversation->messages()
             ->where('user_id', auth()->id())
+            ->whereNull('deleted_for_everyone_at')
             ->when(
                 $request->filled('after_id'),
                 fn ($q) => $q->where('id', '>', max(0, (int) $request->after_id - 30)),

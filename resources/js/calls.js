@@ -6,85 +6,121 @@ class ToneGenerator {
         this.osc2 = null;
         this.gainNode = null;
         this.timer = null;
+        this._unlocked = false;
+        this._unlockBound = false;
+    }
+
+    bindUnlock() {
+        if (this._unlockBound) return;
+        this._unlockBound = true;
+
+        const unlock = async () => {
+            try {
+                const AudioCtx = window.AudioContext || window.webkitAudioContext;
+                if (!AudioCtx) return;
+                if (!this._silentCtx) {
+                    this._silentCtx = new AudioCtx();
+                }
+                if (this._silentCtx.state === 'suspended') {
+                    await this._silentCtx.resume();
+                }
+                const buffer = this._silentCtx.createBuffer(1, 1, 22050);
+                const source = this._silentCtx.createBufferSource();
+                source.buffer = buffer;
+                source.connect(this._silentCtx.destination);
+                source.start(0);
+                this._unlocked = true;
+            } catch (e) {}
+        };
+
+        ['pointerdown', 'touchstart', 'keydown', 'click'].forEach((eventName) => {
+            document.addEventListener(eventName, unlock, { passive: true });
+        });
+    }
+
+    async ensureContext() {
+        const AudioCtx = window.AudioContext || window.webkitAudioContext;
+        if (!AudioCtx) throw new Error('AudioContext not supported');
+
+        if (!this.ctx || this.ctx.state === 'closed') {
+            this.ctx = this._silentCtx && this._silentCtx.state !== 'closed'
+                ? this._silentCtx
+                : new AudioCtx();
+            this._silentCtx = this.ctx;
+        }
+
+        if (this.ctx.state === 'suspended') {
+            await this.ctx.resume();
+        }
+
+        return this.ctx;
     }
 
     startRing() {
-        this.stop();
-        try {
-            const AudioCtx = window.AudioContext || window.webkitAudioContext;
-            this.ctx = new AudioCtx();
-            this.gainNode = this.ctx.createGain();
-            this.gainNode.gain.setValueAtTime(0, this.ctx.currentTime);
-            this.gainNode.connect(this.ctx.destination);
-
-            this.osc1 = this.ctx.createOscillator();
-            this.osc1.type = 'sine';
-            this.osc1.frequency.value = 440;
-            this.osc1.connect(this.gainNode);
-
-            this.osc2 = this.ctx.createOscillator();
-            this.osc2.type = 'sine';
-            this.osc2.frequency.value = 480;
-            this.osc2.connect(this.gainNode);
-
-            this.osc1.start(0);
-            this.osc2.start(0);
-
-            const playRing = () => {
-                if (!this.ctx) return;
-                const now = this.ctx.currentTime;
-                this.gainNode.gain.setValueAtTime(0, now);
-                this.gainNode.gain.linearRampToValueAtTime(0.15, now + 0.1);
-                this.gainNode.gain.setValueAtTime(0.15, now + 2.0);
-                this.gainNode.gain.linearRampToValueAtTime(0, now + 2.1);
-            };
-
-            playRing();
-            this.timer = setInterval(playRing, 4000);
-        } catch (e) {
-            console.error('Failed to generate ring tone', e);
-        }
+        this.stop(false);
+        this._startTone({
+            f1: 440,
+            f2: 480,
+            peak: 0.18,
+            onMs: 2.0,
+            offMs: 2.1,
+            intervalMs: 4000,
+        }).catch((e) => console.error('Failed to generate ring tone', e));
     }
 
     startDial() {
-        this.stop();
-        try {
-            const AudioCtx = window.AudioContext || window.webkitAudioContext;
-            this.ctx = new AudioCtx();
-            this.gainNode = this.ctx.createGain();
-            this.gainNode.gain.setValueAtTime(0, this.ctx.currentTime);
-            this.gainNode.connect(this.ctx.destination);
+        this.stop(false);
+        this._startTone({
+            f1: 350,
+            f2: 440,
+            peak: 0.12,
+            onMs: 1.2,
+            offMs: 1.3,
+            intervalMs: 3000,
+        }).catch((e) => console.error('Failed to generate dial tone', e));
+    }
 
-            this.osc1 = this.ctx.createOscillator();
+    async _startTone({ f1, f2, peak, onMs, offMs, intervalMs }) {
+        try {
+            const ctx = await this.ensureContext();
+            this.gainNode = ctx.createGain();
+            this.gainNode.gain.setValueAtTime(0, ctx.currentTime);
+            this.gainNode.connect(ctx.destination);
+
+            this.osc1 = ctx.createOscillator();
             this.osc1.type = 'sine';
-            this.osc1.frequency.value = 350;
+            this.osc1.frequency.value = f1;
             this.osc1.connect(this.gainNode);
 
-            this.osc2 = this.ctx.createOscillator();
+            this.osc2 = ctx.createOscillator();
             this.osc2.type = 'sine';
-            this.osc2.frequency.value = 440;
+            this.osc2.frequency.value = f2;
             this.osc2.connect(this.gainNode);
 
             this.osc1.start(0);
             this.osc2.start(0);
 
-            const playDial = () => {
-                if (!this.ctx) return;
+            const play = () => {
+                if (!this.ctx || !this.gainNode) return;
+                if (this.ctx.state === 'suspended') {
+                    this.ctx.resume().catch(() => {});
+                }
                 const now = this.ctx.currentTime;
+                this.gainNode.gain.cancelScheduledValues(now);
                 this.gainNode.gain.setValueAtTime(0, now);
-                this.gainNode.gain.linearRampToValueAtTime(0.1, now + 0.1);
-                this.gainNode.gain.setValueAtTime(0.1, now + 1.2);
-                this.gainNode.gain.linearRampToValueAtTime(0, now + 1.3);
+                this.gainNode.gain.linearRampToValueAtTime(peak, now + 0.1);
+                this.gainNode.gain.setValueAtTime(peak, now + onMs);
+                this.gainNode.gain.linearRampToValueAtTime(0, now + offMs);
             };
 
-            playDial();
-            this.timer = setInterval(playDial, 3000);
+            play();
+            this.timer = setInterval(play, intervalMs);
         } catch (e) {
-            console.error('Failed to generate dial tone', e);
+            console.error('Failed to generate tone', e);
         }
     }
 
-    stop() {
+    stop(closeContext = true) {
         if (this.timer) {
             clearInterval(this.timer);
             this.timer = null;
@@ -92,12 +128,17 @@ class ToneGenerator {
         try {
             if (this.osc1) this.osc1.stop();
             if (this.osc2) this.osc2.stop();
-            if (this.ctx) this.ctx.close();
         } catch (e) {}
         this.osc1 = null;
         this.osc2 = null;
-        this.ctx = null;
         this.gainNode = null;
+
+        if (closeContext && this.ctx && this.ctx !== this._silentCtx) {
+            try {
+                this.ctx.close();
+            } catch (e) {}
+            this.ctx = null;
+        }
     }
 }
 
@@ -105,6 +146,7 @@ class WebRTCCallManager {
     constructor() {
         this.peerConnection = null;
         this.localStream = null;
+        this.remoteStream = null;
         this.remoteUserId = null;
         this.isVideo = false;
         this.toneGen = new ToneGenerator();
@@ -112,6 +154,7 @@ class WebRTCCallManager {
         this.isIncoming = false;
         this.isCalling = false;
         this.isCallActive = false;
+        this.isMinimized = false;
         this.incomingOfferSdp = null;
         this.callId = null;
         this.wasAnswered = false;
@@ -121,22 +164,45 @@ class WebRTCCallManager {
         this._endingCall = false;
         this._disconnectTimer = null;
         this.targetOffline = false;
+        this.facingMode = 'user';
+        this.videosSwapped = false;
+        this.localMuted = false;
+        this.localVideoOff = false;
+        this.remoteMuted = false;
+        this.remoteVideoOff = false;
+        this.peerName = '';
+        this.peerAvatar = '';
+        this._vibrateTimer = null;
+        this._flippingCamera = false;
+        this.audioOutputId = '';
+        this.audioRoute = 'phone';
+        this.audioOutputs = [];
+        this._deviceChangeHandler = null;
 
         this.overlay = null;
+        this.minimizedEl = null;
         this.avatar = null;
         this.userName = null;
         this.status = null;
         this.videosContainer = null;
         this.audioPulse = null;
-        this.localVideo = null;
-        this.remoteVideo = null;
+        this.mainVideo = null;
+        this.pipVideo = null;
         this.remoteAudio = null;
+        this.miniVideo = null;
 
         this.declineBtn = null;
         this.acceptBtn = null;
         this.muteBtn = null;
         this.videoBtn = null;
+        this.speakerBtn = null;
+        this.flipBtn = null;
         this.hangupBtn = null;
+        this.minimizeBtn = null;
+        this.pipWrap = null;
+        this.speakerPicker = null;
+        this.speakerPickerList = null;
+        this.speakerPickerHint = null;
     }
 
     init() {
@@ -146,21 +212,49 @@ class WebRTCCallManager {
         if (!this.overlay) return;
 
         this._uiBound = true;
+        this.toneGen.bindUnlock();
 
+        this.minimizedEl = document.getElementById('call-minimized');
         this.avatar = document.getElementById('call-user-avatar');
         this.userName = document.getElementById('call-user-name');
         this.status = document.getElementById('call-status');
         this.videosContainer = document.getElementById('call-videos-container');
         this.audioPulse = document.getElementById('call-audio-pulse');
-        this.localVideo = document.getElementById('local-video');
-        this.remoteVideo = document.getElementById('remote-video');
+        this.mainVideo = document.getElementById('main-call-video');
+        this.pipVideo = document.getElementById('pip-call-video');
         this.remoteAudio = document.getElementById('remote-audio');
+        this.miniVideo = document.getElementById('mini-call-video');
+        this.profileBlock = document.getElementById('call-profile-block');
+
+        this.mainVideoOffOverlay = document.getElementById('main-video-off-overlay');
+        this.mainVideoOffAvatar = document.getElementById('main-video-off-avatar');
+        this.mainMutedBadge = document.getElementById('main-muted-badge');
+        this.pipVideoOffOverlay = document.getElementById('pip-video-off-overlay');
+        this.pipMutedBadge = document.getElementById('pip-muted-badge');
+        this.remoteAudioMutedBadge = document.getElementById('remote-audio-muted-badge');
+        this.remoteAudioMutedLabel = document.getElementById('remote-audio-muted-label');
+
+        this.miniAvatarWrap = document.getElementById('mini-call-avatar-wrap');
+        this.miniAvatar = document.getElementById('mini-call-avatar');
+        this.miniName = document.getElementById('mini-call-name');
+        this.miniStatus = document.getElementById('mini-call-status');
+        this.miniRemoteMuted = document.getElementById('mini-remote-muted');
+        this.miniHangupBtn = document.getElementById('mini-hangup-btn');
 
         this.declineBtn = document.getElementById('decline-call-btn');
         this.acceptBtn = document.getElementById('accept-call-btn');
         this.muteBtn = document.getElementById('toggle-mute-btn');
         this.videoBtn = document.getElementById('toggle-video-btn');
+        this.speakerBtn = document.getElementById('speaker-btn');
+        this.flipBtn = document.getElementById('flip-camera-btn');
         this.hangupBtn = document.getElementById('hangup-call-btn');
+        this.minimizeBtn = document.getElementById('minimize-call-btn');
+        this.pipWrap = document.getElementById('pip-video-wrap');
+        this.speakerPicker = document.getElementById('speaker-picker');
+        this.speakerPickerList = document.getElementById('speaker-picker-list');
+        this.speakerPickerHint = document.getElementById('speaker-picker-hint');
+        this.speakerPickerBackdrop = document.getElementById('speaker-picker-backdrop');
+        this.speakerPickerClose = document.getElementById('speaker-picker-close');
 
         this.declineBtn?.addEventListener('click', (e) => {
             e.preventDefault();
@@ -180,6 +274,23 @@ class WebRTCCallManager {
             e.preventDefault();
             this.toggleVideo();
         });
+        this.flipBtn?.addEventListener('click', (e) => {
+            e.preventDefault();
+            this.flipCamera();
+        });
+        this.speakerBtn?.addEventListener('click', (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            this.openSpeakerPicker();
+        });
+        this.speakerPickerBackdrop?.addEventListener('click', (e) => {
+            e.preventDefault();
+            this.closeSpeakerPicker();
+        });
+        this.speakerPickerClose?.addEventListener('click', (e) => {
+            e.preventDefault();
+            this.closeSpeakerPicker();
+        });
         this.hangupBtn?.addEventListener('click', (e) => {
             e.preventDefault();
             e.stopPropagation();
@@ -188,6 +299,24 @@ class WebRTCCallManager {
             } else {
                 this.hangupCall();
             }
+        });
+        this.minimizeBtn?.addEventListener('click', (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            this.minimizeCall();
+        });
+        this.pipWrap?.addEventListener('click', (e) => {
+            e.preventDefault();
+            this.swapVideos();
+        });
+        this.minimizedEl?.addEventListener('click', (e) => {
+            if (e.target.closest('#mini-hangup-btn')) return;
+            this.expandCall();
+        });
+        this.miniHangupBtn?.addEventListener('click', (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            this.hangupCall();
         });
 
         this.bindChatCallButtons();
@@ -390,6 +519,40 @@ class WebRTCCallManager {
         }, ms);
     }
 
+    startVibrate() {
+        this.stopVibrate();
+        if (!navigator.vibrate) return;
+
+        const pulse = () => {
+            try {
+                navigator.vibrate([400, 200, 400, 600]);
+            } catch (e) {}
+        };
+
+        pulse();
+        this._vibrateTimer = setInterval(pulse, 1600);
+    }
+
+    stopVibrate() {
+        if (this._vibrateTimer) {
+            clearInterval(this._vibrateTimer);
+            this._vibrateTimer = null;
+        }
+        try {
+            navigator.vibrate?.(0);
+        } catch (e) {}
+    }
+
+    startIncomingAlert() {
+        this.toneGen.startRing();
+        this.startVibrate();
+    }
+
+    stopIncomingAlert() {
+        this.toneGen.stop(false);
+        this.stopVibrate();
+    }
+
     async sendSignal(type, data = null, remoteUserId = null) {
         const targetId = remoteUserId ?? this.remoteUserId;
         if (!targetId) return { ok: false, message: 'No call recipient.' };
@@ -425,26 +588,23 @@ class WebRTCCallManager {
         }
     }
 
-    showLocalVideoPreview() {
-        if (!this.isVideo || !this.localStream) return;
+    sendMediaState() {
+        if (!(this.isCallActive || this.isCalling) || !this.remoteUserId) return;
 
-        this.videosContainer?.classList.remove('hidden');
-        this.audioPulse?.classList.add('hidden');
-
-        if (this.localVideo) {
-            this.localVideo.srcObject = this.localStream;
-            this.localVideo.muted = true;
-            this.localVideo.play().catch(() => {});
-        }
+        this.sendSignal('media_state', {
+            muted: this.localMuted,
+            video_off: this.localVideoOff,
+            is_video: this.isVideo,
+        });
     }
 
-    showMediaControls() {
-        this.muteBtn?.classList.remove('hidden');
-        if (this.isVideo && this.localStream?.getVideoTracks().length) {
-            this.videoBtn?.classList.remove('hidden');
-        } else {
-            this.videoBtn?.classList.add('hidden');
+    applyRemoteMediaState(data = {}) {
+        this.remoteMuted = !!data.muted;
+        if (typeof data.video_off === 'boolean') {
+            this.remoteVideoOff = data.video_off;
         }
+        this.updateMediaIndicators();
+        this.updateMinimizedUI();
     }
 
     mediaErrorMessage(error) {
@@ -466,20 +626,31 @@ class WebRTCCallManager {
             throw new Error('This browser does not support calls.');
         }
 
+        const constraints = {
+            audio: true,
+            video: isVideo
+                ? { facingMode: { ideal: this.facingMode } }
+                : false,
+        };
+
         try {
-            return await navigator.mediaDevices.getUserMedia({
-                audio: true,
-                video: isVideo,
-            });
+            return await navigator.mediaDevices.getUserMedia(constraints);
         } catch (error) {
             if (isVideo) {
                 try {
                     return await navigator.mediaDevices.getUserMedia({
                         audio: true,
-                        video: false,
+                        video: true,
                     });
-                } catch (audioOnlyError) {
-                    throw audioOnlyError;
+                } catch (retryError) {
+                    try {
+                        return await navigator.mediaDevices.getUserMedia({
+                            audio: true,
+                            video: false,
+                        });
+                    } catch (audioOnlyError) {
+                        throw audioOnlyError;
+                    }
                 }
             }
             throw error;
@@ -487,23 +658,483 @@ class WebRTCCallManager {
     }
 
     setPeerInfo(peerInfo = {}) {
-        if (peerInfo.name && this.userName) {
-            this.userName.textContent = peerInfo.name;
+        if (peerInfo.name) {
+            this.peerName = peerInfo.name;
+            if (this.userName) this.userName.textContent = peerInfo.name;
+            if (this.miniName) this.miniName.textContent = peerInfo.name;
         }
-        if (peerInfo.avatar && this.avatar) {
-            this.avatar.src = peerInfo.avatar;
+        if (peerInfo.avatar) {
+            this.peerAvatar = peerInfo.avatar;
+            if (this.avatar) this.avatar.src = peerInfo.avatar;
+            if (this.miniAvatar) this.miniAvatar.src = peerInfo.avatar;
+            if (this.mainVideoOffAvatar) this.mainVideoOffAvatar.src = peerInfo.avatar;
         }
     }
 
-    attachRemoteStream(stream) {
-        if (this.isVideo && this.remoteVideo) {
-            this.remoteVideo.srcObject = stream;
-            this.remoteVideo.play().catch(() => {});
+    playVideoEl(el) {
+        if (!el) return;
+        el.play().catch(() => {});
+    }
+
+    attachStreamsToVideos() {
+        if (!this.isVideo) return;
+
+        const local = this.localStream;
+        const remote = this.remoteStream;
+        const mainShowsRemote = !this.videosSwapped;
+
+        // Keep video elements muted — remote audio always plays via #remote-audio (setSinkId).
+        if (this.mainVideo) {
+            this.mainVideo.srcObject = mainShowsRemote ? remote : local;
+            this.mainVideo.muted = true;
+            this.playVideoEl(this.mainVideo);
         }
+
+        if (this.pipVideo) {
+            this.pipVideo.srcObject = mainShowsRemote ? local : remote;
+            this.pipVideo.muted = true;
+            this.playVideoEl(this.pipVideo);
+        }
+
+        if (this.miniVideo) {
+            this.miniVideo.srcObject = remote || local;
+            this.miniVideo.muted = true;
+            this.playVideoEl(this.miniVideo);
+        }
+
+        this.updateMediaIndicators();
+        this.updateMinimizedUI();
+    }
+
+    attachRemoteStream(stream) {
+        this.remoteStream = stream;
+
         if (this.remoteAudio) {
             this.remoteAudio.srcObject = stream;
-            this.remoteAudio.play().catch(() => {});
+            this.playVideoEl(this.remoteAudio);
+            this.applyAudioOutput();
         }
+
+        if (this.isVideo) {
+            this.attachStreamsToVideos();
+        }
+
+        this.updateMediaIndicators();
+        this.updateMinimizedUI();
+    }
+
+    supportsSinkId() {
+        return typeof HTMLMediaElement !== 'undefined'
+            && typeof HTMLMediaElement.prototype.setSinkId === 'function';
+    }
+
+    categorizeOutputDevice(device) {
+        const label = (device.label || '').toLowerCase();
+        const id = (device.deviceId || '').toLowerCase();
+
+        if (
+            label.includes('bluetooth')
+            || label.includes('airpods')
+            || label.includes('buds')
+            || label.includes('headset')
+            || label.includes('hands-free')
+            || label.includes('handsfree')
+            || label.includes('a2dp')
+            || label.includes('hfp')
+        ) {
+            return 'bluetooth';
+        }
+
+        if (
+            label.includes('speaker')
+            || label.includes('loudspeaker')
+            || label.includes('loud speaker')
+            || label.includes('external')
+        ) {
+            return 'speaker';
+        }
+
+        if (
+            label.includes('earpiece')
+            || label.includes('receiver')
+            || label.includes('handset')
+            || label.includes('phone')
+            || id === 'communications'
+        ) {
+            return 'phone';
+        }
+
+        if (id === 'default' || label.includes('default')) {
+            return 'phone';
+        }
+
+        return 'other';
+    }
+
+    routeMeta(route) {
+        const map = {
+            phone: {
+                title: 'Phone',
+                subtitle: 'Earpiece / normal speaker',
+                icon: 'phone',
+            },
+            speaker: {
+                title: 'Speaker',
+                subtitle: 'Hands-free / loud speaker',
+                icon: 'speaker',
+            },
+            bluetooth: {
+                title: 'Bluetooth',
+                subtitle: 'Wireless headset or earbuds',
+                icon: 'bluetooth',
+            },
+            other: {
+                title: 'Other device',
+                subtitle: 'Connected audio output',
+                icon: 'other',
+            },
+        };
+        return map[route] || map.other;
+    }
+
+    routeIconSvg(route) {
+        if (route === 'phone') {
+            return '<svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z"/></svg>';
+        }
+        if (route === 'bluetooth') {
+            return '<svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M7 7l10 10-5 5V2l5 5L7 17"/></svg>';
+        }
+        if (route === 'speaker') {
+            return '<svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M15.536 8.464a5 5 0 010 7.072M18.364 5.636a9 9 0 010 12.728M12 6v12l-4-4H4V10h4l4-4z"/></svg>';
+        }
+        return '<svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"/></svg>';
+    }
+
+    async refreshAudioOutputs() {
+        this.audioOutputs = [];
+
+        if (!navigator.mediaDevices?.enumerateDevices) {
+            return this.buildFallbackRoutes();
+        }
+
+        try {
+            const devices = await navigator.mediaDevices.enumerateDevices();
+            const outputs = devices.filter((d) => d.kind === 'audiooutput');
+
+            if (!outputs.length || !this.supportsSinkId()) {
+                return this.buildFallbackRoutes();
+            }
+
+            const routes = [];
+            const seen = new Set();
+
+            outputs.forEach((device) => {
+                const route = this.categorizeOutputDevice(device);
+                const meta = this.routeMeta(route);
+                const label = device.label?.trim();
+                const key = device.deviceId || `${route}-${label}`;
+                if (seen.has(key)) return;
+                seen.add(key);
+
+                routes.push({
+                    id: device.deviceId,
+                    route,
+                    title: label || meta.title,
+                    subtitle: label ? meta.title : meta.subtitle,
+                });
+            });
+
+            // Ensure Phone + Speaker always appear even if OS only exposes "default".
+            const hasPhone = routes.some((r) => r.route === 'phone');
+            const hasSpeaker = routes.some((r) => r.route === 'speaker');
+            const defaultDevice = outputs.find((d) => d.deviceId === 'default') || outputs[0];
+
+            if (!hasPhone) {
+                routes.unshift({
+                    id: defaultDevice?.deviceId || '',
+                    route: 'phone',
+                    title: 'Phone',
+                    subtitle: 'Earpiece / normal speaker',
+                });
+            }
+
+            if (!hasSpeaker) {
+                const speakerDevice = outputs.find((d) => this.categorizeOutputDevice(d) === 'speaker')
+                    || outputs.find((d) => d.deviceId !== 'communications')
+                    || defaultDevice;
+                routes.push({
+                    id: speakerDevice?.deviceId || defaultDevice?.deviceId || '',
+                    route: 'speaker',
+                    title: 'Speaker',
+                    subtitle: 'Hands-free / loud speaker',
+                });
+            }
+
+            this.audioOutputs = routes;
+            return routes;
+        } catch (e) {
+            console.warn('Could not list audio outputs:', e);
+            return this.buildFallbackRoutes();
+        }
+    }
+
+    buildFallbackRoutes() {
+        this.audioOutputs = [
+            {
+                id: '',
+                route: 'phone',
+                title: 'Phone',
+                subtitle: 'Earpiece / normal speaker',
+            },
+            {
+                id: 'speaker',
+                route: 'speaker',
+                title: 'Speaker',
+                subtitle: 'Hands-free / loud speaker',
+            },
+            {
+                id: 'bluetooth',
+                route: 'bluetooth',
+                title: 'Bluetooth',
+                subtitle: this.supportsSinkId()
+                    ? 'Connect a Bluetooth device in system settings'
+                    : 'Use system Bluetooth settings',
+                disabled: true,
+            },
+        ];
+        return this.audioOutputs;
+    }
+
+    async applyAudioOutput() {
+        if (!this.remoteAudio) return;
+
+        const route = this.audioRoute || 'phone';
+        const canSink = this.supportsSinkId() && typeof this.remoteAudio.setSinkId === 'function';
+
+        if (canSink && this.audioOutputId !== undefined && this.audioOutputId !== 'speaker' && this.audioOutputId !== 'bluetooth') {
+            try {
+                await this.remoteAudio.setSinkId(this.audioOutputId || '');
+            } catch (e) {
+                console.warn('setSinkId failed:', e);
+            }
+        }
+
+        // Loud speaker fallback when OS does not expose separate devices.
+        this.remoteAudio.volume = route === 'speaker' ? 1 : 0.92;
+
+        this.updateSpeakerButtonUI();
+    }
+
+    updateSpeakerButtonUI() {
+        const active = this.audioRoute === 'speaker' || this.audioRoute === 'bluetooth';
+        this.speakerBtn?.classList.toggle('bg-indigo-500/80', active);
+        this.speakerBtn?.classList.toggle('hover:bg-indigo-600', active);
+        this.speakerBtn?.classList.toggle('bg-white/10', !active);
+        this.speakerBtn?.classList.toggle('hover:bg-white/20', !active);
+
+        if (this.speakerBtn) {
+            const meta = this.routeMeta(this.audioRoute);
+            this.speakerBtn.title = `Audio: ${meta.title}`;
+        }
+    }
+
+    async openSpeakerPicker() {
+        await this.refreshAudioOutputs();
+        this.renderSpeakerPicker();
+        this.speakerPicker?.classList.remove('hidden');
+    }
+
+    closeSpeakerPicker() {
+        this.speakerPicker?.classList.add('hidden');
+    }
+
+    renderSpeakerPicker() {
+        if (!this.speakerPickerList) return;
+
+        const canSink = this.supportsSinkId();
+        if (this.speakerPickerHint) {
+            if (!canSink) {
+                this.speakerPickerHint.textContent = 'This browser has limited output control. Speaker boosts volume; Bluetooth is chosen from system settings.';
+                this.speakerPickerHint.classList.remove('hidden');
+            } else {
+                this.speakerPickerHint.classList.add('hidden');
+            }
+        }
+
+        this.speakerPickerList.innerHTML = '';
+
+        this.audioOutputs.forEach((item) => {
+            const isSelected = this.audioRoute === item.route
+                && (this.audioOutputId || '') === (item.id || '');
+
+            const btn = document.createElement('button');
+            btn.type = 'button';
+            btn.disabled = !!item.disabled;
+            btn.className = [
+                'w-full flex items-center gap-3 px-3 py-3 rounded-2xl text-left transition-colors',
+                item.disabled ? 'opacity-40 cursor-not-allowed' : 'hover:bg-white/10',
+                isSelected ? 'bg-indigo-500/20 border border-indigo-400/40' : 'border border-transparent',
+            ].join(' ');
+
+            btn.innerHTML = `
+                <span class="w-10 h-10 rounded-full bg-white/10 flex items-center justify-center shrink-0">${this.routeIconSvg(item.route)}</span>
+                <span class="min-w-0 flex-1">
+                    <span class="block text-sm font-semibold text-white truncate">${item.title}</span>
+                    <span class="block text-[11px] text-white/50 truncate">${item.subtitle || ''}</span>
+                </span>
+                <span class="shrink-0 w-5 h-5 rounded-full border ${isSelected ? 'border-indigo-400 bg-indigo-500' : 'border-white/30'} flex items-center justify-center">
+                    ${isSelected ? '<span class="w-2 h-2 rounded-full bg-white"></span>' : ''}
+                </span>
+            `;
+
+            if (!item.disabled) {
+                btn.addEventListener('click', async () => {
+                    await this.selectAudioOutput(item);
+                    this.closeSpeakerPicker();
+                });
+            }
+
+            this.speakerPickerList.appendChild(btn);
+        });
+    }
+
+    async selectAudioOutput(item) {
+        this.audioRoute = item.route;
+        this.audioOutputId = item.id || '';
+        await this.applyAudioOutput();
+    }
+
+    bindAudioDeviceWatcher() {
+        if (this._deviceChangeHandler || !navigator.mediaDevices?.addEventListener) return;
+
+        this._deviceChangeHandler = async () => {
+            if (!(this.isCallActive || this.isCalling)) return;
+            await this.refreshAudioOutputs();
+
+            // If selected Bluetooth device disconnects, fall back to phone.
+            const stillThere = this.audioOutputs.some((o) => o.id === this.audioOutputId && !o.disabled);
+            if (this.audioOutputId && !stillThere && this.supportsSinkId()) {
+                const phone = this.audioOutputs.find((o) => o.route === 'phone') || this.audioOutputs[0];
+                if (phone) {
+                    await this.selectAudioOutput(phone);
+                }
+            }
+
+            if (this.speakerPicker && !this.speakerPicker.classList.contains('hidden')) {
+                this.renderSpeakerPicker();
+            }
+        };
+
+        navigator.mediaDevices.addEventListener('devicechange', this._deviceChangeHandler);
+    }
+
+    unbindAudioDeviceWatcher() {
+        if (this._deviceChangeHandler && navigator.mediaDevices?.removeEventListener) {
+            navigator.mediaDevices.removeEventListener('devicechange', this._deviceChangeHandler);
+        }
+        this._deviceChangeHandler = null;
+    }
+
+    showLocalVideoPreview() {
+        if (!this.isVideo || !this.localStream) return;
+
+        this.videosContainer?.classList.remove('hidden');
+        this.audioPulse?.classList.add('hidden');
+        this.profileBlock?.classList.add('hidden');
+        this.attachStreamsToVideos();
+    }
+
+    showMediaControls() {
+        this.muteBtn?.classList.remove('hidden');
+        this.speakerBtn?.classList.remove('hidden');
+        this.updateSpeakerButtonUI();
+        if (this.isVideo && this.localStream?.getVideoTracks().length) {
+            this.videoBtn?.classList.remove('hidden');
+            this.flipBtn?.classList.remove('hidden');
+        } else {
+            this.videoBtn?.classList.add('hidden');
+            this.flipBtn?.classList.add('hidden');
+        }
+        if (this.isCallActive || this.isCalling) {
+            this.minimizeBtn?.classList.remove('hidden');
+        }
+    }
+
+    updateLocalControlStyles() {
+        this.muteBtn?.classList.toggle('bg-rose-500/80', this.localMuted);
+        this.muteBtn?.classList.toggle('hover:bg-rose-600', this.localMuted);
+        this.muteBtn?.classList.toggle('bg-white/10', !this.localMuted);
+        this.muteBtn?.classList.toggle('hover:bg-white/20', !this.localMuted);
+        if (this.muteBtn) {
+            this.muteBtn.title = this.localMuted ? 'Unmute' : 'Mute Audio';
+        }
+
+        this.videoBtn?.classList.toggle('bg-rose-500/80', this.localVideoOff);
+        this.videoBtn?.classList.toggle('hover:bg-rose-600', this.localVideoOff);
+        this.videoBtn?.classList.toggle('bg-white/10', !this.localVideoOff);
+        this.videoBtn?.classList.toggle('hover:bg-white/20', !this.localVideoOff);
+        if (this.videoBtn) {
+            this.videoBtn.title = this.localVideoOff ? 'Turn Camera On' : 'Turn Camera Off';
+        }
+    }
+
+    updateMediaIndicators() {
+        const mainShowsRemote = !this.videosSwapped;
+        const mainMuted = mainShowsRemote ? this.remoteMuted : this.localMuted;
+        const mainVideoOff = mainShowsRemote ? this.remoteVideoOff : this.localVideoOff;
+        const pipMuted = mainShowsRemote ? this.localMuted : this.remoteMuted;
+        const pipVideoOff = mainShowsRemote ? this.localVideoOff : this.remoteVideoOff;
+
+        if (this.isVideo) {
+            this.mainMutedBadge?.classList.toggle('hidden', !mainMuted);
+            this.pipMutedBadge?.classList.toggle('hidden', !pipMuted);
+            this.mainVideoOffOverlay?.classList.toggle('hidden', !mainVideoOff);
+            this.pipVideoOffOverlay?.classList.toggle('hidden', !pipVideoOff);
+
+            if (this.mainVideoOffAvatar) {
+                this.mainVideoOffAvatar.src = mainShowsRemote ? (this.peerAvatar || '') : '';
+                this.mainVideoOffAvatar.classList.toggle('hidden', !mainShowsRemote || !this.peerAvatar);
+            }
+
+            this.remoteAudioMutedBadge?.classList.add('hidden');
+            this.remoteAudioMutedBadge?.classList.remove('inline-flex');
+        } else {
+            this.mainMutedBadge?.classList.add('hidden');
+            this.pipMutedBadge?.classList.add('hidden');
+            this.mainVideoOffOverlay?.classList.add('hidden');
+            this.pipVideoOffOverlay?.classList.add('hidden');
+
+            if (this.remoteMuted) {
+                this.remoteAudioMutedBadge?.classList.remove('hidden');
+                this.remoteAudioMutedBadge?.classList.add('inline-flex');
+                if (this.remoteAudioMutedLabel) {
+                    this.remoteAudioMutedLabel.textContent = `${this.peerName || 'User'} muted`;
+                }
+            } else {
+                this.remoteAudioMutedBadge?.classList.add('hidden');
+                this.remoteAudioMutedBadge?.classList.remove('inline-flex');
+            }
+        }
+
+        this.miniRemoteMuted?.classList.toggle('hidden', !this.remoteMuted);
+    }
+
+    updateMinimizedUI() {
+        if (!this.minimizedEl || this.minimizedEl.classList.contains('hidden')) return;
+
+        const showVideo = this.isVideo && this.remoteStream && !this.remoteVideoOff;
+        if (this.miniVideo) {
+            this.miniVideo.classList.toggle('hidden', !showVideo);
+            if (showVideo) {
+                this.miniVideo.srcObject = this.remoteStream;
+                this.playVideoEl(this.miniVideo);
+            }
+        }
+        this.miniAvatarWrap?.classList.toggle('hidden', showVideo);
+        if (this.miniStatus) {
+            this.miniStatus.textContent = this.isCallActive ? 'In call' : 'Connecting...';
+        }
+        this.miniRemoteMuted?.classList.toggle('hidden', !this.remoteMuted);
     }
 
     async startCall(remoteUserId, isVideo = false, peerInfo = {}, options = {}) {
@@ -513,6 +1144,7 @@ class WebRTCCallManager {
 
         this._endingCall = false;
         this.targetOffline = false;
+        this.resetMediaFlags();
 
         let targetOnline = options.targetOnline;
         if (targetOnline === undefined) {
@@ -527,6 +1159,8 @@ class WebRTCCallManager {
         this.callId = crypto.randomUUID();
         this.wasAnswered = false;
         this.callerUserId = window.authUserId;
+        this.facingMode = 'user';
+        this.videosSwapped = false;
         this.startDialTimeout(this.targetOffline ? 25000 : 60000);
 
         this.showOverlay();
@@ -539,6 +1173,11 @@ class WebRTCCallManager {
         this.hangupBtn.classList.remove('hidden');
         this.muteBtn.classList.add('hidden');
         this.videoBtn.classList.add('hidden');
+        this.speakerBtn?.classList.add('hidden');
+        this.flipBtn?.classList.add('hidden');
+        this.minimizeBtn?.classList.remove('hidden');
+        this.resetAudioRoute();
+        this.bindAudioDeviceWatcher();
 
         if (!this.targetOffline) {
             this.toneGen.startDial();
@@ -549,6 +1188,8 @@ class WebRTCCallManager {
 
             this.showLocalVideoPreview();
             this.showMediaControls();
+            await this.refreshAudioOutputs();
+            await this.applyAudioOutput();
 
             this.createPeerConnection();
 
@@ -584,9 +1225,13 @@ class WebRTCCallManager {
         }
 
         this.peerConnection.ontrack = (event) => {
-            if (event.streams?.[0]) {
-                this.attachRemoteStream(event.streams[0]);
+            const stream = event.streams?.[0] || new MediaStream([event.track]);
+            if (!this.remoteStream) {
+                this.remoteStream = stream;
+            } else if (event.track && !this.remoteStream.getTracks().includes(event.track)) {
+                this.remoteStream.addTrack(event.track);
             }
+            this.attachRemoteStream(this.remoteStream);
         };
 
         this.peerConnection.onicecandidate = (event) => {
@@ -606,8 +1251,9 @@ class WebRTCCallManager {
                 this.isCalling = false;
                 this.wasAnswered = true;
                 this.clearCallTimeouts();
-                this.toneGen.stop();
+                this.stopIncomingAlert();
                 this.updateCallUI();
+                this.sendMediaState();
                 return;
             }
 
@@ -651,6 +1297,7 @@ class WebRTCCallManager {
                     this.callId = data.call_id || crypto.randomUUID();
                     this.callerUserId = from_user.id;
                     this.wasAnswered = false;
+                    this.resetMediaFlags();
                     this.startRingTimeout();
 
                     this.showOverlay();
@@ -662,8 +1309,12 @@ class WebRTCCallManager {
                     this.hangupBtn?.classList.add('hidden');
                     this.muteBtn?.classList.add('hidden');
                     this.videoBtn?.classList.add('hidden');
+                    this.speakerBtn?.classList.add('hidden');
+                    this.flipBtn?.classList.add('hidden');
+                    this.minimizeBtn?.classList.add('hidden');
+                    this.closeSpeakerPicker();
 
-                    this.toneGen.startRing();
+                    this.startIncomingAlert();
                     break;
 
                 case 'answer':
@@ -673,8 +1324,9 @@ class WebRTCCallManager {
                     this.wasAnswered = true;
                     this.isCalling = false;
                     this.clearCallTimeouts();
-                    this.toneGen.stop();
+                    this.stopIncomingAlert();
                     this.updateCallUI();
+                    this.sendMediaState();
                     break;
 
                 case 'candidate':
@@ -683,6 +1335,12 @@ class WebRTCCallManager {
                     } else {
                         this.iceCandidatesQueue.push(data);
                     }
+                    break;
+
+                case 'media_state':
+                    if (!(this.isCallActive || this.isCalling || this.isIncoming)) break;
+                    if (from_user?.id !== this.remoteUserId) break;
+                    this.applyRemoteMediaState(data || {});
                     break;
 
                 case 'decline':
@@ -723,17 +1381,23 @@ class WebRTCCallManager {
         if (!this.isIncoming || !this.remoteUserId || !this.incomingOfferSdp) return;
         if (this._endingCall) return;
 
-        this.toneGen.stop();
+        this.stopIncomingAlert();
         this.acceptBtn.classList.add('hidden');
         this.declineBtn.classList.add('hidden');
         this.hangupBtn.classList.remove('hidden');
         this.status.textContent = 'Connecting...';
 
         try {
+            this.facingMode = 'user';
+            this.videosSwapped = false;
+            this.resetAudioRoute();
+            this.bindAudioDeviceWatcher();
             this.localStream = await this.getLocalMedia(this.isVideo);
 
             this.showLocalVideoPreview();
             this.showMediaControls();
+            await this.refreshAudioOutputs();
+            await this.applyAudioOutput();
 
             this.createPeerConnection();
 
@@ -750,6 +1414,7 @@ class WebRTCCallManager {
             this.isCallActive = true;
             this.clearCallTimeouts();
             this.updateCallUI();
+            this.sendMediaState();
         } catch (e) {
             console.error('Failed to accept call:', e);
             const message = this.mediaErrorMessage(e);
@@ -771,11 +1436,13 @@ class WebRTCCallManager {
     }
 
     stopRemotePlayback() {
-        [this.remoteVideo, this.remoteAudio].forEach((element) => {
-            if (!element?.srcObject) return;
-            this.stopMediaStream(element.srcObject);
-            element.srcObject = null;
+        if (this.remoteAudio?.srcObject) {
+            this.remoteAudio.srcObject = null;
+        }
+        [this.mainVideo, this.pipVideo, this.miniVideo].forEach((element) => {
+            if (element) element.srcObject = null;
         });
+        this.remoteStream = null;
     }
 
     async endCall(signalType = 'hangup', extra = {}) {
@@ -810,14 +1477,10 @@ class WebRTCCallManager {
         if (!audioTrack) return;
 
         audioTrack.enabled = !audioTrack.enabled;
-        const muted = !audioTrack.enabled;
-        this.muteBtn?.classList.toggle('bg-red-600', muted);
-        this.muteBtn?.classList.toggle('hover:bg-red-700', muted);
-        this.muteBtn?.classList.toggle('bg-slate-700', !muted);
-        this.muteBtn?.classList.toggle('hover:bg-slate-600', !muted);
-        if (this.muteBtn) {
-            this.muteBtn.title = muted ? 'Unmute' : 'Mute Audio';
-        }
+        this.localMuted = !audioTrack.enabled;
+        this.updateLocalControlStyles();
+        this.updateMediaIndicators();
+        this.sendMediaState();
     }
 
     toggleVideo() {
@@ -826,19 +1489,87 @@ class WebRTCCallManager {
         if (!videoTrack) return;
 
         videoTrack.enabled = !videoTrack.enabled;
-        const off = !videoTrack.enabled;
-        this.videoBtn?.classList.toggle('bg-red-600', off);
-        this.videoBtn?.classList.toggle('hover:bg-red-700', off);
-        this.videoBtn?.classList.toggle('bg-slate-700', !off);
-        this.videoBtn?.classList.toggle('hover:bg-slate-600', !off);
-        if (this.videoBtn) {
-            this.videoBtn.title = off ? 'Turn Camera On' : 'Turn Camera Off';
+        this.localVideoOff = !videoTrack.enabled;
+        this.updateLocalControlStyles();
+        this.updateMediaIndicators();
+        this.sendMediaState();
+    }
+
+    async flipCamera() {
+        if (!this.isVideo || !this.localStream || this._flippingCamera) return;
+
+        this._flippingCamera = true;
+        const nextFacing = this.facingMode === 'user' ? 'environment' : 'user';
+
+        try {
+            const newStream = await navigator.mediaDevices.getUserMedia({
+                audio: false,
+                video: { facingMode: { ideal: nextFacing } },
+            });
+            const newTrack = newStream.getVideoTracks()[0];
+            if (!newTrack) {
+                newStream.getTracks().forEach((t) => t.stop());
+                return;
+            }
+
+            const sender = this.peerConnection?.getSenders().find((s) => s.track?.kind === 'video');
+            if (sender) {
+                await sender.replaceTrack(newTrack);
+            }
+
+            const oldTrack = this.localStream.getVideoTracks()[0];
+            if (oldTrack) {
+                this.localStream.removeTrack(oldTrack);
+                oldTrack.stop();
+            }
+            this.localStream.addTrack(newTrack);
+            this.facingMode = nextFacing;
+
+            if (this.localVideoOff) {
+                newTrack.enabled = false;
+            }
+
+            this.attachStreamsToVideos();
+        } catch (e) {
+            console.warn('Flip camera failed:', e);
+            alert('Could not switch camera. Your device may have only one camera.');
+        } finally {
+            this._flippingCamera = false;
         }
     }
 
-    showOverlay() {
+    swapVideos() {
+        if (!this.isVideo || !this.isCallActive) return;
+        this.videosSwapped = !this.videosSwapped;
+        this.attachStreamsToVideos();
+    }
+
+    minimizeCall() {
+        if (!(this.isCallActive || this.isCalling || this.isIncoming)) return;
+        if (this.isIncoming && !this.isCallActive) return;
+
+        this.isMinimized = true;
+        this.overlay?.classList.add('hidden');
+        this.minimizedEl?.classList.remove('hidden');
+        document.body.style.overflow = '';
+        this.updateMinimizedUI();
+    }
+
+    expandCall() {
+        this.isMinimized = false;
+        this.minimizedEl?.classList.add('hidden');
         this.overlay?.classList.remove('hidden');
         document.body.style.overflow = 'hidden';
+        this.attachStreamsToVideos();
+        this.updateMediaIndicators();
+    }
+
+    showOverlay() {
+        this.isMinimized = false;
+        this.minimizedEl?.classList.add('hidden');
+        this.overlay?.classList.remove('hidden');
+        document.body.style.overflow = 'hidden';
+        this.profileBlock?.classList.remove('hidden');
     }
 
     updateCallUI() {
@@ -850,24 +1581,59 @@ class WebRTCCallManager {
         if (this.isVideo) {
             this.videosContainer?.classList.remove('hidden');
             this.audioPulse?.classList.add('hidden');
+            this.profileBlock?.classList.add('hidden');
+            this.attachStreamsToVideos();
         } else {
             this.videosContainer?.classList.add('hidden');
             this.audioPulse?.classList.remove('hidden');
+            this.profileBlock?.classList.remove('hidden');
+        }
+
+        this.updateMediaIndicators();
+        if (this.isMinimized) {
+            this.updateMinimizedUI();
+        }
+    }
+
+    resetMediaFlags() {
+        this.localMuted = false;
+        this.localVideoOff = false;
+        this.remoteMuted = false;
+        this.remoteVideoOff = false;
+        this.videosSwapped = false;
+        this.facingMode = 'user';
+        this.updateLocalControlStyles();
+        this.updateMediaIndicators();
+    }
+
+    resetAudioRoute() {
+        this.audioOutputId = '';
+        this.audioRoute = 'phone';
+        this.audioOutputs = [];
+        this.updateSpeakerButtonUI();
+        if (this.remoteAudio) {
+            this.remoteAudio.volume = 0.92;
         }
     }
 
     cleanup() {
-        this.toneGen.stop();
+        this.stopIncomingAlert();
         this.clearCallTimeouts();
         this.clearDisconnectTimer();
+        this.unbindAudioDeviceWatcher();
+        this.closeSpeakerPicker();
         this.isIncoming = false;
         this.isCalling = false;
         this.isCallActive = false;
+        this.isMinimized = false;
         this.incomingOfferSdp = null;
         this.callId = null;
         this.wasAnswered = false;
         this.callerUserId = null;
         this.targetOffline = false;
+        this.peerName = '';
+        this.peerAvatar = '';
+        this.resetAudioRoute();
 
         if (this.peerConnection) {
             this.peerConnection.onconnectionstatechange = null;
@@ -886,18 +1652,33 @@ class WebRTCCallManager {
 
         this.stopRemotePlayback();
 
-        if (this.localVideo) this.localVideo.srcObject = null;
-
         this.overlay?.classList.add('hidden');
+        this.minimizedEl?.classList.add('hidden');
         document.body.style.overflow = '';
 
         this.declineBtn?.classList.add('hidden');
         this.acceptBtn?.classList.add('hidden');
         this.muteBtn?.classList.add('hidden');
         this.videoBtn?.classList.add('hidden');
+        this.speakerBtn?.classList.add('hidden');
+        this.flipBtn?.classList.add('hidden');
         this.hangupBtn?.classList.add('hidden');
+        this.minimizeBtn?.classList.add('hidden');
         this.videosContainer?.classList.add('hidden');
         this.audioPulse?.classList.add('hidden');
+        this.profileBlock?.classList.remove('hidden');
+        this.remoteAudioMutedBadge?.classList.add('hidden');
+        this.remoteAudioMutedBadge?.classList.remove('inline-flex');
+        this.mainVideoOffOverlay?.classList.add('hidden');
+        this.pipVideoOffOverlay?.classList.add('hidden');
+        this.mainMutedBadge?.classList.add('hidden');
+        this.pipMutedBadge?.classList.add('hidden');
+
+        this.resetMediaFlags();
+
+        if (this.remoteAudio && typeof this.remoteAudio.setSinkId === 'function') {
+            this.remoteAudio.setSinkId('').catch(() => {});
+        }
 
         this.iceCandidatesQueue = [];
         this.remoteUserId = null;
