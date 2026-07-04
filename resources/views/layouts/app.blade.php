@@ -209,7 +209,7 @@
             justify-content: center !important;
             flex-shrink: 0 !important;
             visibility: hidden !important;
-            opacity: 0 !important;
+            /* opacity: 0 !important; */
             pointer-events: none !important;
         }
         #call-overlay[data-call-phase="incoming"] #decline-call-btn,
