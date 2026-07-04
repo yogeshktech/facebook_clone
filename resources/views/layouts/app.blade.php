@@ -55,6 +55,59 @@
     @include('layouts.assets')
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/swiper@11/swiper-bundle.min.css">
     <script src="https://cdn.jsdelivr.net/npm/swiper@11/swiper-bundle.min.js"></script>
+    @auth
+    {{-- Critical call UI styles inline so live works even with stale Vite CSS --}}
+    <style id="call-ui-critical-css">
+        #call-overlay.call-overlay,
+        #call-overlay {
+            position: fixed !important;
+            inset: 0 !important;
+            z-index: 99999 !important;
+            display: none;
+            flex-direction: column !important;
+            align-items: center !important;
+            justify-content: space-between !important;
+            padding: 1.25rem !important;
+            padding-top: max(1.25rem, env(safe-area-inset-top, 0px)) !important;
+            padding-bottom: max(1.25rem, env(safe-area-inset-bottom, 0px)) !important;
+            color: #fff !important;
+            background: #020617 !important;
+            box-sizing: border-box !important;
+            width: 100% !important;
+            height: 100% !important;
+            min-height: 100dvh !important;
+        }
+        #call-overlay:not(.hidden) {
+            display: flex !important;
+            visibility: visible !important;
+            opacity: 1 !important;
+        }
+        #call-overlay.hidden {
+            display: none !important;
+        }
+        #call-minimized.call-ongoing-bar {
+            position: fixed !important;
+            top: 0 !important;
+            left: 0 !important;
+            right: 0 !important;
+            z-index: 100000 !important;
+            background: #059669 !important;
+        }
+        #call-minimized.hidden { display: none !important; }
+        #call-minimized:not(.hidden) { display: block !important; }
+        body.call-ui-open { overflow: hidden !important; }
+        body.call-ui-open nav.fixed.bottom-0 {
+            visibility: hidden !important;
+            pointer-events: none !important;
+        }
+        .call-ctrl-btn.call-ctrl-off,
+        #toggle-mute-btn.call-ctrl-off,
+        #toggle-video-btn.call-ctrl-off {
+            background: #e11d48 !important;
+            border-color: #fb7185 !important;
+        }
+    </style>
+    @endauth
 </head>
 <body class="bg-fb-gray min-h-screen">
     @auth

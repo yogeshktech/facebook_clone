@@ -1,5 +1,19 @@
-const CACHE_NAME = 'newbook-v3';
-const PRECACHE_URLS = ['/', '/feed', '/manifest.json', '/icons/icon-192.png', '/icons/icon-512.png', '/images/newbook-logo.jpg'];
+const CACHE_NAME = 'newbook-v4';
+const PRECACHE_URLS = ['/manifest.json', '/icons/icon-192.png', '/icons/icon-512.png', '/images/newbook-logo.jpg'];
+
+function isRealtimePath(pathname) {
+    return (
+        pathname.startsWith('/api/')
+        || pathname.startsWith('/chat/call/')
+        || pathname.startsWith('/broadcasting/')
+        || pathname.startsWith('/notifications/')
+        || pathname.includes('/messages')
+        || pathname.includes('/typing')
+        || pathname.includes('/signal')
+        || pathname.includes('/inbox')
+        || pathname.includes('/presence')
+    );
+}
 
 self.addEventListener('install', (event) => {
     event.waitUntil(
@@ -19,19 +33,41 @@ self.addEventListener('activate', (event) => {
 
 self.addEventListener('fetch', (event) => {
     if (event.request.method !== 'GET') return;
+
     const url = new URL(event.request.url);
-    if (url.pathname.startsWith('/api/') || url.pathname.includes('/messages')) return;
+
+    // Never cache call signaling / realtime endpoints — breaks pickup→connect.
+    if (isRealtimePath(url.pathname)) {
+        event.respondWith(
+            fetch(event.request).catch(
+                () => new Response(JSON.stringify({ ok: false }), {
+                    status: 503,
+                    headers: { 'Content-Type': 'application/json' },
+                })
+            )
+        );
+        return;
+    }
+
+    // Cross-origin media (MinIO etc.) — network only, never SW cache.
+    if (url.origin !== self.location.origin) {
+        return;
+    }
 
     event.respondWith(
         fetch(event.request)
             .then((response) => {
-                if (response.ok && url.origin === self.location.origin) {
+                if (response && response.ok) {
                     const clone = response.clone();
-                    caches.open(CACHE_NAME).then((cache) => cache.put(event.request, clone));
+                    caches.open(CACHE_NAME).then((cache) => cache.put(event.request, clone)).catch(() => {});
                 }
                 return response;
             })
-            .catch(() => caches.match(event.request))
+            .catch(async () => {
+                const cached = await caches.match(event.request);
+                if (cached) return cached;
+                return new Response('', { status: 503, statusText: 'Offline' });
+            })
     );
 });
 

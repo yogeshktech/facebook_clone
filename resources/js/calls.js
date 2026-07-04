@@ -427,13 +427,41 @@ class WebRTCCallManager {
     startInboxPolling() {
         if (this._inboxTimer) return;
         this.pullInbox();
-        this._inboxTimer = setInterval(() => this.pullInbox(), 1000);
+        this._inboxTimer = setInterval(() => this.pullInbox(), this.inboxPollMs());
         // Also poll when tab becomes visible again (mobile background)
         document.addEventListener('visibilitychange', () => {
             if (document.visibilityState === 'visible') {
                 this.pullInbox();
             }
         });
+    }
+
+    inboxPollMs() {
+        // Faster while ringing / connecting so answer + ICE arrive quickly.
+        if (this.isCalling || this.isIncoming || (this.isCallActive && this.peerConnection?.connectionState !== 'connected')) {
+            return 400;
+        }
+        return 1000;
+    }
+
+    bumpInboxPolling() {
+        if (!this._inboxTimer) {
+            this.startInboxPolling();
+            return;
+        }
+        clearInterval(this._inboxTimer);
+        this._inboxTimer = setInterval(() => this.pullInbox(), this.inboxPollMs());
+        this.pullInbox();
+    }
+
+    signalData(extra = {}) {
+        return {
+            call_id: this.callId,
+            caller_id: this.callerUserId,
+            isVideo: this.isVideo,
+            is_video: this.isVideo,
+            ...extra,
+        };
     }
 
     async pullInbox() {
@@ -703,11 +731,10 @@ class WebRTCCallManager {
     sendMediaState() {
         if (!(this.isCallActive || this.isCalling) || !this.remoteUserId) return;
 
-        this.sendSignal('media_state', {
+        this.sendSignal('media_state', this.signalData({
             muted: this.localMuted,
             video_off: this.localVideoOff,
-            is_video: this.isVideo,
-        });
+        }));
     }
 
     applyRemoteMediaState(data = {}) {
@@ -1345,19 +1372,22 @@ class WebRTCCallManager {
             });
             await this.peerConnection.setLocalDescription(offer);
 
-            const sent = await this.sendSignal('offer', {
+            const sent = await this.sendSignal('offer', this.signalData({
                 sdp: this.normalizeSdp(offer.sdp),
-                isVideo,
-                call_id: this.callId,
-                caller_id: this.callerUserId,
-            });
+            }));
             if (!sent.ok) {
-                throw new Error(sent.message || 'Could not reach call server. On live: start Reverb (supervisorctl start newbook-reverb) and check nginx /app proxy.');
+                throw new Error(sent.message || 'Could not reach call server.');
             }
+
+            this.bumpInboxPolling();
+            // Caller must receive answer + ICE quickly.
+            setTimeout(() => this.pullInbox(), 300);
+            setTimeout(() => this.pullInbox(), 800);
+            setTimeout(() => this.pullInbox(), 1500);
         } catch (e) {
             console.error('Failed to start call:', e);
             this.cleanup();
-            alert(e.message || 'Could not start call. Check microphone/camera permissions and Reverb server.');
+            alert(e.message || 'Could not start call. Check microphone/camera permissions.');
         }
     }
 
@@ -1382,7 +1412,26 @@ class WebRTCCallManager {
 
         this.peerConnection.onicecandidate = (event) => {
             if (event.candidate) {
-                this.sendSignal('candidate', event.candidate.toJSON());
+                this.sendSignal('candidate', this.signalData(event.candidate.toJSON()));
+            }
+        };
+
+        this.peerConnection.oniceconnectionstatechange = () => {
+            const ice = this.peerConnection?.iceConnectionState;
+            if (ice === 'connected' || ice === 'completed') {
+                if (this.status) this.status.textContent = 'Connected';
+                this.isCallActive = true;
+                this.isCalling = false;
+                this.wasAnswered = true;
+                this.clearCallTimeouts();
+                this.stopIncomingAlert();
+                this.bumpInboxPolling();
+            } else if (ice === 'checking' || ice === 'connected') {
+                if (this.status && this.status.textContent !== 'Connected') {
+                    this.status.textContent = 'Connecting...';
+                }
+            } else if (ice === 'failed') {
+                this.tryIceRestart();
             }
         };
 
@@ -1400,6 +1449,13 @@ class WebRTCCallManager {
                 this.stopIncomingAlert();
                 this.updateCallUI();
                 this.sendMediaState();
+                this.bumpInboxPolling();
+                return;
+            }
+
+            if (state === 'connecting') {
+                if (this.status) this.status.textContent = 'Connecting...';
+                this.bumpInboxPolling();
                 return;
             }
 
@@ -1407,16 +1463,64 @@ class WebRTCCallManager {
                 this.clearDisconnectTimer();
                 this._disconnectTimer = setTimeout(() => {
                     if (this.peerConnection?.connectionState === 'disconnected') {
-                        this.cleanup();
+                        this.tryIceRestart();
                     }
-                }, 4000);
+                }, 3000);
                 return;
             }
 
-            if (state === 'failed' || state === 'closed') {
+            if (state === 'failed') {
+                this.tryIceRestart();
+                return;
+            }
+
+            if (state === 'closed') {
                 this.cleanup();
             }
         };
+    }
+
+    tryIceRestart() {
+        if (!this.peerConnection || this._iceRestarting) return;
+        if (!['failed', 'disconnected'].includes(this.peerConnection.connectionState)
+            && !['failed', 'disconnected'].includes(this.peerConnection.iceConnectionState)) {
+            return;
+        }
+
+        this._iceRestarting = true;
+        if (this.status) this.status.textContent = 'Reconnecting...';
+
+        const pc = this.peerConnection;
+        const doRestart = async () => {
+            try {
+                if (typeof pc.restartIce === 'function') {
+                    pc.restartIce();
+                }
+                // Caller creates a new offer; callee waits for it via signaling.
+                if (this.callerUserId === window.authUserId && pc.signalingState === 'stable') {
+                    const offer = await pc.createOffer({ iceRestart: true });
+                    await pc.setLocalDescription(offer);
+                    await this.sendSignal('offer', this.signalData({
+                        sdp: this.normalizeSdp(offer.sdp),
+                        ice_restart: true,
+                    }));
+                }
+            } catch (e) {
+                console.warn('ICE restart failed', e);
+            } finally {
+                setTimeout(() => {
+                    this._iceRestarting = false;
+                    if (this.peerConnection
+                        && ['failed', 'disconnected', 'closed'].includes(this.peerConnection.connectionState)) {
+                        if (this.status) this.status.textContent = 'Connection failed';
+                        setTimeout(() => this.hangupCall(), 1500);
+                    }
+                }, 8000);
+            }
+        };
+
+        doRestart();
+        this.bumpInboxPolling();
     }
 
     async handleIncomingSignal(payload) {
@@ -1428,48 +1532,51 @@ class WebRTCCallManager {
 
         try {
             switch (type) {
-                case 'offer':
-                    if (this.isCallActive || this.isCalling || this.isIncoming) {
-                        // Same offer replayed — ignore; different caller — busy.
-                        if (String(data.call_id || '') === String(this.callId || '')) return;
-                        const prevRemote = this.remoteUserId;
-                        this.remoteUserId = from_user.id;
-                        await this.sendSignal('decline', {
-                            reason: 'busy',
-                            call_id: data.call_id,
-                            caller_id: from_user.id,
-                            is_video: !!(data.isVideo ?? data.is_video),
-                        });
-                        this.remoteUserId = prevRemote;
-                        return;
-                    }
-
+                case 'offer': {
                     if (!data.sdp) {
                         console.error('Incoming call missing SDP', payload);
                         return;
                     }
 
+                    const fromId = Number(from_user.id);
+                    const sameCall = data.call_id && String(data.call_id) === String(this.callId || '');
+                    const sameCaller = fromId && Number(this.remoteUserId) === fromId;
+                    const uiVisible = this.isCallUiVisible();
+
+                    // ICE restart offer during active call — renegotiate, don't re-ring.
+                    if (data.ice_restart && this.peerConnection && (sameCall || sameCaller)) {
+                        await this.handleIceRestartOffer(data);
+                        return;
+                    }
+
+                    // Duplicate delivery of the same offer (Echo + inbox) — ignore.
+                    if (sameCall && (this.isIncoming || this.isCalling || this.isCallActive)) {
+                        if (!uiVisible) this.forceShowCallUi();
+                        return;
+                    }
+
+                    // Only busy when a REAL call UI is already up with someone else.
+                    if (uiVisible && this.isCallActive && !sameCaller) {
+                        await this.sendBusyDecline(from_user, data);
+                        return;
+                    }
+
+                    // Stuck flags / missed UI / same caller redial — always show incoming screen.
+                    if (this.isIncoming || this.isCalling || this.isCallActive) {
+                        this.softResetForIncoming();
+                    }
+
                     this.showIncomingCall(from_user, data);
+                    this.bumpInboxPolling();
                     break;
+                }
 
                 case 'answer':
-                    if (!this.peerConnection) return;
-                    await this.setRemoteSdp('answer', data.sdp);
-                    await this.flushIceCandidates();
-                    this.wasAnswered = true;
-                    this.isCalling = false;
-                    this.clearCallTimeouts();
-                    this.stopIncomingAlert();
-                    this.updateCallUI();
-                    this.sendMediaState();
+                    await this.handleAnswer(data);
                     break;
 
                 case 'candidate':
-                    if (this.peerConnection && this.peerConnection.remoteDescription) {
-                        await this.peerConnection.addIceCandidate(new RTCIceCandidate(data));
-                    } else {
-                        this.iceCandidatesQueue.push(data);
-                    }
+                    await this.handleRemoteCandidate(data);
                     break;
 
                 case 'media_state':
@@ -1484,7 +1591,7 @@ class WebRTCCallManager {
                     if (from_user?.id !== window.authUserId) {
                         const reason = data?.reason;
                         if (reason === 'busy') {
-                            alert('User is on another call.');
+                            alert('User is busy on another call.');
                         } else if (reason !== 'missed') {
                             alert('Call declined.');
                         }
@@ -1505,10 +1612,98 @@ class WebRTCCallManager {
         while (this.iceCandidatesQueue.length > 0 && this.peerConnection) {
             const cand = this.iceCandidatesQueue.shift();
             try {
-                await this.peerConnection.addIceCandidate(new RTCIceCandidate(cand));
+                const init = this.candidateInit(cand);
+                if (!init) continue;
+                await this.peerConnection.addIceCandidate(new RTCIceCandidate(init));
             } catch (e) {
                 console.warn('ICE candidate error:', e);
             }
+        }
+    }
+
+    candidateInit(data) {
+        if (!data || typeof data !== 'object') return null;
+        // Support both plain candidate JSON and wrapped payloads.
+        const init = data.candidate !== undefined ? data : (data.data || data);
+        if (!init || (init.candidate === '' || init.candidate == null) && init.sdpMid == null) {
+            return null;
+        }
+        return {
+            candidate: init.candidate,
+            sdpMid: init.sdpMid ?? init.sdp_mid ?? null,
+            sdpMLineIndex: init.sdpMLineIndex ?? init.sdp_m_line_index ?? null,
+            usernameFragment: init.usernameFragment ?? init.username_fragment,
+        };
+    }
+
+    async handleRemoteCandidate(data) {
+        const init = this.candidateInit(data);
+        if (!init) return;
+
+        if (this.peerConnection && this.peerConnection.remoteDescription) {
+            try {
+                await this.peerConnection.addIceCandidate(new RTCIceCandidate(init));
+            } catch (e) {
+                console.warn('Add ICE candidate failed', e);
+            }
+            return;
+        }
+
+        this.iceCandidatesQueue.push(init);
+    }
+
+    async handleAnswer(data) {
+        if (!data?.sdp) {
+            console.error('Answer missing SDP', data);
+            return;
+        }
+
+        if (!this.peerConnection) {
+            console.warn('Answer received but peerConnection missing');
+            return;
+        }
+
+        try {
+            // Ignore duplicate answers.
+            if (this.peerConnection.signalingState === 'stable' && this.peerConnection.currentRemoteDescription) {
+                this.wasAnswered = true;
+                this.isCalling = false;
+                await this.flushIceCandidates();
+                return;
+            }
+
+            await this.setRemoteSdp('answer', data.sdp);
+            await this.flushIceCandidates();
+            this.wasAnswered = true;
+            this.isCalling = false;
+            this.isCallActive = true;
+            this.clearCallTimeouts();
+            this.stopIncomingAlert();
+            if (this.status) this.status.textContent = 'Connecting...';
+            this.updateCallUI();
+            this.sendMediaState();
+            this.bumpInboxPolling();
+            this.pullInbox();
+        } catch (e) {
+            console.error('Failed to apply answer SDP', e);
+            if (this.status) this.status.textContent = 'Connection error';
+        }
+    }
+
+    async handleIceRestartOffer(data) {
+        if (!this.peerConnection || !data?.sdp) return;
+        try {
+            await this.setRemoteSdp('offer', data.sdp);
+            await this.flushIceCandidates();
+            const answer = await this.peerConnection.createAnswer();
+            await this.peerConnection.setLocalDescription(answer);
+            await this.sendSignal('answer', this.signalData({
+                sdp: this.normalizeSdp(answer.sdp),
+                ice_restart: true,
+            }));
+            this.bumpInboxPolling();
+        } catch (e) {
+            console.warn('ICE restart answer failed', e);
         }
     }
 
@@ -1517,10 +1712,12 @@ class WebRTCCallManager {
         if (this._endingCall) return;
 
         this.stopIncomingAlert();
-        this.acceptBtn.classList.add('hidden');
-        this.declineBtn.classList.add('hidden');
-        this.hangupBtn.classList.remove('hidden');
-        this.status.textContent = 'Connecting...';
+        this.acceptBtn?.classList.add('hidden');
+        this.declineBtn?.classList.add('hidden');
+        this.hangupBtn?.classList.remove('hidden');
+        if (this.status) this.status.textContent = 'Connecting...';
+        this.forceShowCallUi();
+        this.bumpInboxPolling();
 
         try {
             this.facingMode = 'user';
@@ -1537,12 +1734,17 @@ class WebRTCCallManager {
             this.createPeerConnection();
 
             await this.setRemoteSdp('offer', this.incomingOfferSdp);
-
             await this.flushIceCandidates();
 
             const answer = await this.peerConnection.createAnswer();
             await this.peerConnection.setLocalDescription(answer);
-            await this.sendSignal('answer', { sdp: this.normalizeSdp(answer.sdp) });
+
+            const sent = await this.sendSignal('answer', this.signalData({
+                sdp: this.normalizeSdp(answer.sdp),
+            }));
+            if (!sent.ok) {
+                throw new Error(sent.message || 'Could not send answer.');
+            }
 
             this.wasAnswered = true;
             this.isIncoming = false;
@@ -1550,6 +1752,11 @@ class WebRTCCallManager {
             this.clearCallTimeouts();
             this.updateCallUI();
             this.sendMediaState();
+            this.bumpInboxPolling();
+            // Pull immediately so caller-side candidates apply without waiting for interval.
+            this.pullInbox();
+            setTimeout(() => this.pullInbox(), 300);
+            setTimeout(() => this.pullInbox(), 800);
         } catch (e) {
             console.error('Failed to accept call:', e);
             const message = this.mediaErrorMessage(e);
@@ -1708,13 +1915,107 @@ class WebRTCCallManager {
         this.updateMediaIndicators();
     }
 
+    isCallUiVisible() {
+        if (!this.overlay) return false;
+        if (this.overlay.classList.contains('hidden')) return false;
+        const style = window.getComputedStyle(this.overlay);
+        if (style.display === 'none' || style.visibility === 'hidden') return false;
+        // Must cover the viewport — otherwise live CSS is missing and UI is "invisible"
+        const rect = this.overlay.getBoundingClientRect();
+        return rect.width > 100 && rect.height > 100;
+    }
+
+    softResetForIncoming() {
+        this.stopIncomingAlert();
+        this.clearCallTimeouts();
+        this.clearDisconnectTimer();
+        this.isIncoming = false;
+        this.isCalling = false;
+        this.isCallActive = false;
+        this.incomingOfferSdp = null;
+        this.wasAnswered = false;
+        this._endingCall = false;
+
+        if (this.peerConnection) {
+            try {
+                this.peerConnection.onconnectionstatechange = null;
+                this.peerConnection.onicecandidate = null;
+                this.peerConnection.ontrack = null;
+                this.peerConnection.close();
+            } catch (e) {}
+            this.peerConnection = null;
+        }
+
+        if (this.localStream) {
+            this.stopMediaStream(this.localStream);
+            this.localStream = null;
+        }
+        this.stopRemotePlayback();
+        this.iceCandidatesQueue = [];
+    }
+
+    async sendBusyDecline(fromUser, data = {}) {
+        const prevRemote = this.remoteUserId;
+        this.remoteUserId = fromUser.id;
+        try {
+            await this.sendSignal('decline', {
+                reason: 'busy',
+                call_id: data.call_id,
+                caller_id: fromUser.id,
+                is_video: !!(data.isVideo ?? data.is_video),
+            });
+        } finally {
+            this.remoteUserId = prevRemote;
+        }
+    }
+
+    forceShowCallUi() {
+        if (!this.overlay) {
+            this.overlay = document.getElementById('call-overlay');
+        }
+        if (!this.overlay) return;
+
+        this.overlay.classList.remove('hidden');
+        // Inline styles so live works even when Vite CSS is stale/missing
+        Object.assign(this.overlay.style, {
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            position: 'fixed',
+            top: '0',
+            right: '0',
+            bottom: '0',
+            left: '0',
+            width: '100%',
+            height: '100%',
+            minHeight: '100dvh',
+            visibility: 'visible',
+            opacity: '1',
+            zIndex: '99999',
+            background: '#020617',
+            color: '#fff',
+            padding: '1.25rem',
+            boxSizing: 'border-box',
+        });
+
+        document.body.classList.add('call-ui-open');
+        document.body.style.overflow = 'hidden';
+    }
+
     showIncomingCall(fromUser, data = {}) {
         this.isIncoming = true;
         this.isCalling = false;
         this.isCallActive = false;
+        this.isMinimized = false;
         this.remoteUserId = fromUser.id;
         this.isVideo = !!(data.isVideo ?? data.is_video);
-        this.incomingOfferSdp = this.prepareRemoteSdp(data.sdp);
+        try {
+            this.incomingOfferSdp = this.prepareRemoteSdp(data.sdp);
+        } catch (e) {
+            console.error('Bad offer SDP', e);
+            this.incomingOfferSdp = data.sdp;
+        }
         this.callId = data.call_id || crypto.randomUUID();
         this.callerUserId = fromUser.id;
         this.wasAnswered = false;
@@ -1744,19 +2045,17 @@ class WebRTCCallManager {
         this.profileBlock?.classList.remove('hidden');
         this.closeSpeakerPicker();
 
-        // Force paint on mobile Safari
-        if (this.overlay) {
-            this.overlay.style.display = 'flex';
-            this.overlay.style.visibility = 'visible';
-            this.overlay.style.opacity = '1';
-            this.overlay.style.zIndex = '99999';
-        }
-
+        this.forceShowCallUi();
         this.startIncomingAlert();
 
         try {
             if (navigator.vibrate) navigator.vibrate([400, 200, 400, 200, 400]);
         } catch (e) {}
+
+        // Re-assert UI after paint (mobile Safari / live CSS race)
+        requestAnimationFrame(() => this.forceShowCallUi());
+        setTimeout(() => this.forceShowCallUi(), 50);
+        setTimeout(() => this.forceShowCallUi(), 300);
     }
 
     showOverlay() {
@@ -1765,13 +2064,7 @@ class WebRTCCallManager {
         if (this.minimizedEl) {
             this.minimizedEl.style.display = 'none';
         }
-        this.overlay?.classList.remove('hidden');
-        if (this.overlay) {
-            this.overlay.style.display = 'flex';
-            this.overlay.style.visibility = 'visible';
-            this.overlay.style.opacity = '1';
-            this.overlay.style.zIndex = '99999';
-        }
+        this.forceShowCallUi();
         this.setCallUiMode('full');
         this.profileBlock?.classList.remove('hidden');
     }
@@ -1860,12 +2153,14 @@ class WebRTCCallManager {
         this.overlay?.classList.add('hidden');
         if (this.overlay) {
             this.overlay.style.display = 'none';
+            this.overlay.style.visibility = 'hidden';
         }
         this.minimizedEl?.classList.add('hidden');
         if (this.minimizedEl) {
             this.minimizedEl.style.display = 'none';
         }
         document.body.style.overflow = '';
+        document.body.classList.remove('call-ui-open', 'call-minimized-open');
 
         this.declineBtn?.classList.add('hidden');
         this.acceptBtn?.classList.add('hidden');
