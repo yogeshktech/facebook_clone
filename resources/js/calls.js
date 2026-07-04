@@ -1597,7 +1597,8 @@ class WebRTCCallManager {
             await this.refreshAudioOutputs();
             await this.applyAudioOutput();
 
-            this.createPeerConnection();
+            this.createPeerConnection(true);
+            await this.addLocalTracks();
 
             const offer = await this.peerConnection.createOffer({
                 offerToReceiveAudio: true,
@@ -1633,24 +1634,75 @@ class WebRTCCallManager {
         }
     }
 
-    addLocalTracks() {
-        if (!this.peerConnection || !this.localStream) return;
-
+    localTracksToSend() {
+        if (!this.localStream) return [];
+        const tracks = [];
         const audioTrack = this.localStream.getAudioTracks()[0];
-        const videoTrack = this.localStream.getVideoTracks()[0];
-
         if (audioTrack) {
-            const alreadyAdded = this.peerConnection.getSenders().some(s => s.track === audioTrack);
-            if (!alreadyAdded) {
-                this.peerConnection.addTrack(audioTrack, this.localStream);
+            audioTrack.enabled = !this.localMuted;
+            tracks.push(audioTrack);
+        }
+        if (this.isVideo) {
+            const videoTrack = this.localStream.getVideoTracks()[0];
+            if (videoTrack) {
+                videoTrack.enabled = !this.localVideoOff;
+                tracks.push(videoTrack);
             }
         }
+        return tracks;
+    }
 
-        if (this.isVideo && videoTrack) {
-            videoTrack.enabled = true;
-            const alreadyAdded = this.peerConnection.getSenders().some(s => s.track === videoTrack);
-            if (!alreadyAdded) {
-                this.peerConnection.addTrack(videoTrack, this.localStream);
+    /**
+     * Attach local mic/camera to the peer connection.
+     * Answerer must reuse offer transceivers via replaceTrack — plain addTrack after
+     * setRemoteDescription often leaves video as recvonly, so caller never sees callee camera.
+     */
+    async addLocalTracks() {
+        if (!this.peerConnection || !this.localStream) return;
+
+        for (const track of this.localTracksToSend()) {
+            if (this.peerConnection.getSenders().some((s) => s.track === track)) {
+                continue;
+            }
+
+            const transceiver = this.peerConnection.getTransceivers().find((t) => {
+                if (t.stopped) return false;
+                if (t.sender?.track?.kind === track.kind) return true;
+                if (t.receiver?.track?.kind === track.kind) return true;
+                return false;
+            });
+
+            if (transceiver?.sender) {
+                try {
+                    await transceiver.sender.replaceTrack(track);
+                } catch (e) {
+                    console.warn('replaceTrack failed, falling back to addTrack', e);
+                    this.peerConnection.addTrack(track, this.localStream);
+                    continue;
+                }
+                try {
+                    if (transceiver.direction !== 'sendrecv' && transceiver.direction !== 'sendonly') {
+                        transceiver.direction = 'sendrecv';
+                    }
+                } catch (e) {
+                    // direction may be read-only in some states
+                }
+                try {
+                    if (typeof transceiver.sender.setStreams === 'function') {
+                        transceiver.sender.setStreams(this.localStream);
+                    }
+                } catch (e) {}
+                continue;
+            }
+
+            // Caller path (no remote description yet): create sendrecv transceiver with track.
+            try {
+                this.peerConnection.addTransceiver(track, {
+                    direction: 'sendrecv',
+                    streams: [this.localStream],
+                });
+            } catch (e) {
+                this.peerConnection.addTrack(track, this.localStream);
             }
         }
     }
@@ -1661,11 +1713,8 @@ class WebRTCCallManager {
             iceCandidatePoolSize: 4,
         });
 
-        if (addTracks && this.localStream) {
-            this.addLocalTracks();
-        } else if (!addTracks) {
-            // No tracks added yet - will be added using addLocalTracks after setRemoteDescription
-        } else {
+        // Tracks attached async via addLocalTracks() by callers (startCall / acceptCall).
+        if (!addTracks && !this.localStream) {
             this.peerConnection.addTransceiver('audio', { direction: 'recvonly' });
             if (this.isVideo) {
                 this.peerConnection.addTransceiver('video', { direction: 'recvonly' });
@@ -1673,7 +1722,16 @@ class WebRTCCallManager {
         }
 
         this.peerConnection.ontrack = (event) => {
-            this.ingestRemoteTrack(event.track, event.streams?.[0]);
+            const track = event.track;
+            const stream = event.streams?.[0];
+            this.ingestRemoteTrack(track, stream);
+            // Some browsers fire ontrack before frames; re-bind when track unmutes.
+            if (track) {
+                track.onunmute = () => {
+                    if (track.kind === 'video') this.remoteVideoOff = false;
+                    this.ingestRemoteTrack(track, stream || this.remoteStream);
+                };
+            }
         };
 
         this.startRemoteTrackSync();
@@ -1761,17 +1819,14 @@ class WebRTCCallManager {
     ingestRemoteTrack(track, eventStream) {
         if (!track) return;
 
-        let stream = eventStream;
-        if (stream) {
-            // Always clone so <video srcObject> updates reliably.
-            this.remoteStream = new MediaStream(stream.getTracks());
-        } else {
-            const tracks = this.remoteStream ? [...this.remoteStream.getTracks()] : [];
-            if (!tracks.find((t) => t.id === track.id)) {
-                tracks.push(track);
-            }
-            this.remoteStream = new MediaStream(tracks);
+        // Merge all known remote tracks (audio + video may arrive in separate ontrack events).
+        const byId = new Map();
+        (this.remoteStream?.getTracks() || []).forEach((t) => byId.set(t.id, t));
+        if (eventStream) {
+            eventStream.getTracks().forEach((t) => byId.set(t.id, t));
         }
+        byId.set(track.id, track);
+        this.remoteStream = new MediaStream([...byId.values()]);
 
         if (track.kind === 'video') {
             this.isVideo = true;
@@ -1782,6 +1837,7 @@ class WebRTCCallManager {
         track.onunmute = () => {
             if (track.kind === 'video') this.remoteVideoOff = false;
             this.attachRemoteStream(this.remoteStream);
+            this.attachStreamsToVideos();
         };
         track.onmute = () => this.updateMediaIndicators();
         track.onended = () => this.syncRemoteTracksFromPeer();
@@ -1789,6 +1845,7 @@ class WebRTCCallManager {
         this.attachRemoteStream(this.remoteStream);
         setTimeout(() => this.attachRemoteStream(this.remoteStream), 150);
         setTimeout(() => this.attachStreamsToVideos(), 400);
+        setTimeout(() => this.syncRemoteTracksFromPeer(), 800);
     }
 
     syncRemoteTracksFromPeer() {
@@ -2160,10 +2217,24 @@ class WebRTCCallManager {
             await this.setRemoteSdp('offer', this.incomingOfferSdp);
             await this.flushIceCandidates();
 
-            this.addLocalTracks();
+            // Must reuse offer m-lines (replaceTrack + sendrecv) so caller receives callee video.
+            await this.addLocalTracks();
 
-            const answer = await this.peerConnection.createAnswer();
+            let answer = await this.peerConnection.createAnswer();
             await this.peerConnection.setLocalDescription(answer);
+
+            // Guard: answer must send video when this is a video call.
+            if (this.isVideo && this.localStream?.getVideoTracks?.().length) {
+                const sendingVideo = this.peerConnection.getSenders().some(
+                    (s) => s.track?.kind === 'video' && s.track.readyState === 'live',
+                );
+                if (!sendingVideo) {
+                    console.warn('Video sender missing after answer — retry attach');
+                    await this.addLocalTracks();
+                    answer = await this.peerConnection.createAnswer();
+                    await this.peerConnection.setLocalDescription(answer);
+                }
+            }
 
             const sent = await this.sendSignal('answer', this.signalData({
                 sdp: this.normalizeSdp(answer.sdp),
@@ -2177,6 +2248,8 @@ class WebRTCCallManager {
             this.isCallActive = true;
             this.clearCallTimeouts();
             this.updateCallUI();
+            this.syncRemoteTracksFromPeer();
+            this.attachStreamsToVideos();
             this.ensureRemoteAudioPlaying();
             this.sendMediaState();
             this.bumpInboxPolling();
@@ -2184,7 +2257,11 @@ class WebRTCCallManager {
             this.pullInbox();
             setTimeout(() => this.pullInbox(), 300);
             setTimeout(() => this.pullInbox(), 800);
+            setTimeout(() => this.syncRemoteTracksFromPeer(), 400);
+            setTimeout(() => this.attachStreamsToVideos(), 400);
             setTimeout(() => this.ensureRemoteAudioPlaying(), 400);
+            setTimeout(() => this.syncRemoteTracksFromPeer(), 1200);
+            setTimeout(() => this.attachStreamsToVideos(), 1200);
         } catch (e) {
             console.error('Failed to accept call:', e);
             const message = this.mediaErrorMessage(e);

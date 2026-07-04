@@ -63,7 +63,12 @@ class CallSignalingController extends Controller
     public function inbox(Request $request): JsonResponse
     {
         $after = $request->filled('after') ? (float) $request->query('after') : null;
-        $signals = app(CallInboxService::class)->pull(auth()->id(), $after);
+        $userId = (int) auth()->id();
+
+        // Release session lock so concurrent signal POSTs are not blocked during polling.
+        $this->releaseSessionLock($request);
+
+        $signals = app(CallInboxService::class)->pull($userId, $after);
 
         return response()->json([
             'signals' => $signals,
@@ -79,7 +84,9 @@ class CallSignalingController extends Controller
             'data' => ['nullable', 'array'],
         ]);
 
-        $target = User::findOrFail($validated['to_user_id']);
+        $fromUser = $request->user();
+        $toUserId = (int) $validated['to_user_id'];
+        $target = User::findOrFail($toUserId);
 
         if (! $this->canSignalTo($target)) {
             return response()->json([
@@ -87,14 +94,15 @@ class CallSignalingController extends Controller
             ], 403);
         }
 
+        // Auth + validation done — free session so inbox polls / other candidates can proceed.
+        $this->releaseSessionLock($request);
+
         $data = $validated['data'] ?? [];
         if (isset($data['sdp']) && is_string($data['sdp'])) {
             $data['sdp'] = $this->normalizeSdp($data['sdp']);
         }
 
         $type = $validated['type'];
-        $fromUser = $request->user();
-        $toUserId = (int) $validated['to_user_id'];
 
         $payload = [
             'from_user' => [
@@ -129,15 +137,21 @@ class CallSignalingController extends Controller
 
         $broadcastSuccess = false;
         try {
+            // Do not use toOthers() — signals target the other user's private channel only.
+            // Video SDP payloads need Reverb max_message_size >= ~100KB (see config/reverb.php).
             broadcast(new CallSignalingEvent(
                 $fromUser->id,
                 $toUserId,
                 $type,
                 $data
-            ))->toOthers();
+            ));
             $broadcastSuccess = true;
         } catch (\Throwable $e) {
-            logger()->warning('Call signaling broadcast failed (inbox fallback active): '.$e->getMessage());
+            logger()->warning('Call signaling broadcast failed (inbox fallback active): '.$e->getMessage(), [
+                'type' => $type,
+                'to_user_id' => $toUserId,
+                'payload_bytes' => strlen(json_encode($data) ?: ''),
+            ]);
         }
 
         if ($type === 'offer') {
@@ -183,6 +197,18 @@ class CallSignalingController extends Controller
         }
 
         return Conversation::findBetweenUsers($user->id, $target->id) !== null;
+    }
+
+    /** Prevent file/database session lock from queuing WebRTC signal + inbox requests. */
+    private function releaseSessionLock(Request $request): void
+    {
+        try {
+            if ($request->hasSession()) {
+                $request->session()->save();
+            }
+        } catch (\Throwable $e) {
+            // non-fatal
+        }
     }
 
     private function normalizeSdp(string $sdp): string
