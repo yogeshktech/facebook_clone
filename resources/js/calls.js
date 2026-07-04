@@ -1355,42 +1355,47 @@ class WebRTCCallManager {
 
     setBtnVisible(btn, visible) {
         if (!btn) return;
-        btn.classList.toggle('hidden', !visible);
+        // Visibility is driven by #call-overlay[data-call-phase] CSS on live.
+        // Clear inline display / Tailwind .hidden so they cannot hide buttons.
+        btn.classList.remove('hidden');
+        btn.removeAttribute('hidden');
+        btn.style.removeProperty('display');
+        btn.style.removeProperty('visibility');
+        btn.style.removeProperty('opacity');
         btn.classList.toggle('call-btn-visible', !!visible);
-        // !important so live Tailwind .hidden never wins over inline display
-        btn.style.setProperty('display', visible ? 'flex' : 'none', 'important');
-        btn.style.setProperty('align-items', 'center', 'important');
-        btn.style.setProperty('justify-content', 'center', 'important');
-        if (visible) {
-            btn.style.setProperty('visibility', 'visible', 'important');
-            btn.style.setProperty('opacity', '1', 'important');
-        }
     }
 
     /** phase: 'incoming' | 'outgoing' | 'active' | 'none' */
     setCallPhase(phase) {
         this.bindCallDom();
 
+        const overlay = this.overlay || document.getElementById('call-overlay');
+        if (overlay) {
+            overlay.setAttribute('data-call-phase', phase || 'none');
+            const videoOn = phase === 'active'
+                && this.isVideo
+                && !!this.localStream?.getVideoTracks?.().length;
+            overlay.setAttribute('data-call-video', videoOn ? '1' : '0');
+        }
+
         const incoming = phase === 'incoming';
         const outgoing = phase === 'outgoing';
         const active = phase === 'active';
-        // Ringing (outgoing): only End Call — matches WhatsApp / local feel.
-        // Active: full media controls.
         const showHangup = outgoing || active;
         const showMedia = active;
+        const showVideoBtns = showMedia && this.isVideo && !!this.localStream?.getVideoTracks?.().length;
 
+        // Keep class flags in sync (CSS data-call-phase is what actually shows buttons).
         this.setBtnVisible(this.acceptBtn, incoming);
         this.setBtnVisible(this.declineBtn, incoming);
         this.setBtnVisible(this.hangupBtn, showHangup);
         this.setBtnVisible(this.muteBtn, showMedia);
         this.setBtnVisible(this.speakerBtn, showMedia);
-
-        const showVideoBtns = showMedia && this.isVideo && !!this.localStream?.getVideoTracks?.().length;
         this.setBtnVisible(this.videoBtn, showVideoBtns);
         this.setBtnVisible(this.flipBtn, showVideoBtns);
-
         if (this.minimizeBtn) {
             this.setBtnVisible(this.minimizeBtn, showHangup);
+            this.minimizeBtn.classList.toggle('hidden', !showHangup);
         }
 
         // Ringing / incoming: always show profile (avatar or initials), hide video stage.
