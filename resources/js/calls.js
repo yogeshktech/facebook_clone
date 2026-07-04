@@ -927,12 +927,11 @@ class WebRTCCallManager {
 
     updateSpeakerButtonUI() {
         const active = this.audioRoute === 'speaker' || this.audioRoute === 'bluetooth';
-        this.speakerBtn?.classList.toggle('bg-indigo-500/80', active);
-        this.speakerBtn?.classList.toggle('hover:bg-indigo-600', active);
-        this.speakerBtn?.classList.toggle('bg-white/10', !active);
-        this.speakerBtn?.classList.toggle('hover:bg-white/20', !active);
-
         if (this.speakerBtn) {
+            this.speakerBtn.classList.toggle('bg-indigo-600', active);
+            this.speakerBtn.classList.toggle('border-indigo-400', active);
+            this.speakerBtn.classList.toggle('bg-slate-600', !active);
+            this.speakerBtn.classList.toggle('border-white/20', !active);
             const meta = this.routeMeta(this.audioRoute);
             this.speakerBtn.title = `Audio: ${meta.title}`;
         }
@@ -1061,21 +1060,23 @@ class WebRTCCallManager {
     }
 
     updateLocalControlStyles() {
-        this.muteBtn?.classList.toggle('bg-rose-500/80', this.localMuted);
-        this.muteBtn?.classList.toggle('hover:bg-rose-600', this.localMuted);
-        this.muteBtn?.classList.toggle('bg-white/10', !this.localMuted);
-        this.muteBtn?.classList.toggle('hover:bg-white/20', !this.localMuted);
+        this.setCtrlActive(this.muteBtn, this.localMuted);
         if (this.muteBtn) {
             this.muteBtn.title = this.localMuted ? 'Unmute' : 'Mute Audio';
         }
 
-        this.videoBtn?.classList.toggle('bg-rose-500/80', this.localVideoOff);
-        this.videoBtn?.classList.toggle('hover:bg-rose-600', this.localVideoOff);
-        this.videoBtn?.classList.toggle('bg-white/10', !this.localVideoOff);
-        this.videoBtn?.classList.toggle('hover:bg-white/20', !this.localVideoOff);
+        this.setCtrlActive(this.videoBtn, this.localVideoOff);
         if (this.videoBtn) {
             this.videoBtn.title = this.localVideoOff ? 'Turn Camera On' : 'Turn Camera Off';
         }
+    }
+
+    setCtrlActive(btn, active) {
+        if (!btn) return;
+        btn.classList.toggle('bg-rose-600', active);
+        btn.classList.toggle('border-rose-400', active);
+        btn.classList.toggle('bg-slate-600', !active);
+        btn.classList.toggle('border-white/20', !active);
     }
 
     updateMediaIndicators() {
@@ -1128,13 +1129,36 @@ class WebRTCCallManager {
             if (showVideo) {
                 this.miniVideo.srcObject = this.remoteStream;
                 this.playVideoEl(this.miniVideo);
+            } else {
+                this.miniVideo.srcObject = null;
             }
         }
-        this.miniAvatarWrap?.classList.toggle('hidden', showVideo);
         if (this.miniStatus) {
-            this.miniStatus.textContent = this.isCallActive ? 'In call' : 'Connecting...';
+            const label = this.isCallActive ? 'Ongoing call · Tap to return' : 'Connecting… · Tap to open';
+            this.miniStatus.textContent = this.remoteMuted ? `${label} · Muted` : label;
         }
         this.miniRemoteMuted?.classList.toggle('hidden', !this.remoteMuted);
+        if (this.miniName && this.peerName) {
+            this.miniName.textContent = this.peerName;
+        }
+        if (this.miniAvatar && this.peerAvatar) {
+            this.miniAvatar.src = this.peerAvatar;
+        }
+    }
+
+    setCallUiMode(mode) {
+        // mode: 'full' | 'mini' | 'off'
+        document.body.classList.toggle('call-ui-open', mode === 'full');
+        document.body.classList.toggle('call-minimized-open', mode === 'mini');
+        document.body.style.overflow = mode === 'full' ? 'hidden' : '';
+
+        const hint = document.getElementById('call-overlay-hint');
+        if (mode === 'full' && (this.isCallActive || this.isCalling)) {
+            this.minimizeBtn?.classList.remove('hidden');
+            hint?.classList.remove('hidden');
+        } else {
+            hint?.classList.add('hidden');
+        }
     }
 
     async startCall(remoteUserId, isVideo = false, peerInfo = {}, options = {}) {
@@ -1551,7 +1575,7 @@ class WebRTCCallManager {
         this.isMinimized = true;
         this.overlay?.classList.add('hidden');
         this.minimizedEl?.classList.remove('hidden');
-        document.body.style.overflow = '';
+        this.setCallUiMode('mini');
         this.updateMinimizedUI();
     }
 
@@ -1559,7 +1583,7 @@ class WebRTCCallManager {
         this.isMinimized = false;
         this.minimizedEl?.classList.add('hidden');
         this.overlay?.classList.remove('hidden');
-        document.body.style.overflow = 'hidden';
+        this.setCallUiMode('full');
         this.attachStreamsToVideos();
         this.updateMediaIndicators();
     }
@@ -1568,7 +1592,7 @@ class WebRTCCallManager {
         this.isMinimized = false;
         this.minimizedEl?.classList.add('hidden');
         this.overlay?.classList.remove('hidden');
-        document.body.style.overflow = 'hidden';
+        this.setCallUiMode('full');
         this.profileBlock?.classList.remove('hidden');
     }
 
@@ -1634,6 +1658,7 @@ class WebRTCCallManager {
         this.peerName = '';
         this.peerAvatar = '';
         this.resetAudioRoute();
+        this.setCallUiMode('off');
 
         if (this.peerConnection) {
             this.peerConnection.onconnectionstatechange = null;
