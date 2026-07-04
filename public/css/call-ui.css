@@ -240,13 +240,22 @@
     opacity: 1 !important;
 }
 
-#call-minimized.call-ongoing-bar {
+/* Minimized ongoing-call bar — compact single row (live-safe) */
+#call-minimized.call-ongoing-bar,
+#call-minimized {
     position: fixed !important;
     top: 0 !important;
     left: 0 !important;
     right: 0 !important;
     z-index: 100000 !important;
     background: #059669 !important;
+    box-shadow: 0 4px 20px rgba(5, 150, 105, 0.45) !important;
+    padding-top: env(safe-area-inset-top, 0px) !important;
+    height: auto !important;
+    max-height: calc(3.5rem + env(safe-area-inset-top, 0px)) !important;
+    overflow: hidden !important;
+    cursor: pointer !important;
+    box-sizing: border-box !important;
 }
 
 #call-minimized.hidden {
@@ -257,6 +266,91 @@
     display: block !important;
 }
 
+#call-minimized .call-ongoing-inner {
+    display: flex !important;
+    flex-direction: row !important;
+    align-items: center !important;
+    gap: 0.75rem !important;
+    padding: 0.55rem 0.85rem !important;
+    min-height: 3.25rem !important;
+    max-height: 3.5rem !important;
+    width: 100% !important;
+    box-sizing: border-box !important;
+}
+
+#call-minimized .call-ongoing-pulse {
+    width: 0.55rem !important;
+    height: 0.55rem !important;
+    border-radius: 9999px !important;
+    background: #bbf7d0 !important;
+    flex-shrink: 0 !important;
+}
+
+#call-minimized #mini-call-avatar {
+    width: 2.25rem !important;
+    height: 2.25rem !important;
+    border-radius: 9999px !important;
+    object-fit: cover !important;
+    flex-shrink: 0 !important;
+    border: 2px solid rgba(255, 255, 255, 0.4) !important;
+    background: #334155 !important;
+}
+
+#call-minimized .min-w-0.flex-1,
+#call-minimized .call-ongoing-inner > div.min-w-0 {
+    min-width: 0 !important;
+    flex: 1 1 auto !important;
+    overflow: hidden !important;
+}
+
+#call-minimized #mini-call-name {
+    display: block !important;
+    font-size: 0.875rem !important;
+    font-weight: 700 !important;
+    color: #fff !important;
+    white-space: nowrap !important;
+    overflow: hidden !important;
+    text-overflow: ellipsis !important;
+    line-height: 1.2 !important;
+}
+
+#call-minimized #mini-call-status {
+    display: block !important;
+    font-size: 0.6875rem !important;
+    font-weight: 500 !important;
+    color: #d1fae5 !important;
+    white-space: nowrap !important;
+    overflow: hidden !important;
+    text-overflow: ellipsis !important;
+}
+
+#call-minimized #mini-call-video {
+    width: 2.5rem !important;
+    height: 2.5rem !important;
+    border-radius: 0.5rem !important;
+    object-fit: cover !important;
+    flex-shrink: 0 !important;
+    background: #0f172a !important;
+}
+
+#call-minimized #mini-call-video.hidden {
+    display: none !important;
+}
+
+#call-minimized #mini-hangup-btn {
+    width: 2.5rem !important;
+    height: 2.5rem !important;
+    border-radius: 9999px !important;
+    background: #f43f5e !important;
+    color: #fff !important;
+    border: 0 !important;
+    display: flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    flex-shrink: 0 !important;
+    cursor: pointer !important;
+}
+
 body.call-ui-open {
     overflow: hidden !important;
 }
@@ -264,6 +358,78 @@ body.call-ui-open {
 body.call-ui-open nav.fixed.bottom-0 {
     visibility: hidden !important;
     pointer-events: none !important;
+}
+
+body.call-minimized-open {
+    padding-top: calc(3.5rem + env(safe-area-inset-top, 0px)) !important;
+}
+
+body.call-minimized-open nav.fixed.top-0,
+body.call-minimized-open header {
+    top: calc(3.5rem + env(safe-area-inset-top, 0px)) !important;
+}
+
+/* Draggable PiP — snaps to 4 corners */
+#pip-video-wrap {
+    position: absolute !important;
+    width: 7.5rem !important;
+    height: 10rem !important;
+    max-width: 42vw !important;
+    max-height: 28vh !important;
+    border-radius: 1rem !important;
+    overflow: hidden !important;
+    border: 1px solid rgba(255, 255, 255, 0.25) !important;
+    box-shadow: 0 12px 30px rgba(0, 0, 0, 0.45) !important;
+    z-index: 25 !important;
+    background: #0f172a !important;
+    touch-action: none !important;
+    cursor: grab !important;
+    user-select: none !important;
+    -webkit-user-select: none !important;
+    transition: top 0.2s ease, left 0.2s ease, right 0.2s ease, bottom 0.2s ease !important;
+}
+
+#pip-video-wrap:active {
+    cursor: grabbing !important;
+}
+
+#pip-video-wrap.pip-br {
+    top: auto !important;
+    left: auto !important;
+    right: 0.75rem !important;
+    bottom: 0.75rem !important;
+}
+
+#pip-video-wrap.pip-bl {
+    top: auto !important;
+    right: auto !important;
+    left: 0.75rem !important;
+    bottom: 0.75rem !important;
+}
+
+#pip-video-wrap.pip-tr {
+    bottom: auto !important;
+    left: auto !important;
+    right: 0.75rem !important;
+    top: 0.75rem !important;
+}
+
+#pip-video-wrap.pip-tl {
+    bottom: auto !important;
+    right: auto !important;
+    left: 0.75rem !important;
+    top: 0.75rem !important;
+}
+
+#pip-video-wrap video {
+    width: 100% !important;
+    height: 100% !important;
+    object-fit: cover !important;
+    pointer-events: none !important;
+}
+
+#call-videos-container {
+    position: relative !important;
 }
 
 .call-ctrl-btn.call-ctrl-off,

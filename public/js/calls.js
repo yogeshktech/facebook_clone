@@ -172,6 +172,7 @@ class WebRTCCallManager {
         this.remoteVideoOff = false;
         this.peerName = '';
         this.peerAvatar = '';
+        this.pipCorner = 'br';
         this._vibrateTimer = null;
         this._flippingCamera = false;
         this.audioOutputId = '';
@@ -376,10 +377,6 @@ class WebRTCCallManager {
             e.stopPropagation();
             this.minimizeCall();
         });
-        this.pipWrap?.addEventListener('click', (e) => {
-            e.preventDefault();
-            this.swapVideos();
-        });
         this.minimizedEl?.addEventListener('click', (e) => {
             if (e.target.closest('#mini-hangup-btn')) return;
             this.expandCall();
@@ -390,9 +387,102 @@ class WebRTCCallManager {
             this.hangupCall();
         });
 
+        this.bindPipDrag();
         this.bindChatCallButtons();
         this.registerSignalingListener();
         this.startInboxPolling();
+    }
+
+    /** Snap PiP preview to one of 4 corners (tl/tr/bl/br). Drag to move, tap to swap. */
+    setPipCorner(corner = 'br') {
+        const allowed = ['tl', 'tr', 'bl', 'br'];
+        const next = allowed.includes(corner) ? corner : 'br';
+        this.pipCorner = next;
+        const el = this.pipWrap || document.getElementById('pip-video-wrap');
+        if (!el) return;
+        el.classList.remove('pip-tl', 'pip-tr', 'pip-bl', 'pip-br');
+        el.classList.add(`pip-${next}`);
+        try {
+            localStorage.setItem('newbook_pip_corner', next);
+        } catch (e) {}
+    }
+
+    bindPipDrag() {
+        const el = this.pipWrap || document.getElementById('pip-video-wrap');
+        if (!el || el.dataset.pipDragBound === '1') return;
+        el.dataset.pipDragBound = '1';
+        this.pipWrap = el;
+
+        let saved = 'br';
+        try {
+            saved = localStorage.getItem('newbook_pip_corner') || 'br';
+        } catch (e) {}
+        this.setPipCorner(saved);
+
+        let startX = 0;
+        let startY = 0;
+        let dragging = false;
+        let moved = false;
+        const threshold = 10;
+
+        const pointFrom = (e) => {
+            if (e.touches && e.touches[0]) return e.touches[0];
+            if (e.changedTouches && e.changedTouches[0]) return e.changedTouches[0];
+            return e;
+        };
+
+        const onStart = (e) => {
+            const p = pointFrom(e);
+            startX = p.clientX;
+            startY = p.clientY;
+            dragging = true;
+            moved = false;
+        };
+
+        const onMove = (e) => {
+            if (!dragging) return;
+            const p = pointFrom(e);
+            if (Math.abs(p.clientX - startX) > threshold || Math.abs(p.clientY - startY) > threshold) {
+                moved = true;
+                if (e.cancelable) e.preventDefault();
+            }
+        };
+
+        const onEnd = (e) => {
+            if (!dragging) return;
+            dragging = false;
+            const p = pointFrom(e);
+
+            if (moved) {
+                if (e.cancelable) e.preventDefault();
+                e.stopPropagation();
+                const container = this.videosContainer || this.overlay || document.body;
+                const rect = container.getBoundingClientRect();
+                const x = p.clientX - rect.left;
+                const y = p.clientY - rect.top;
+                const corner = `${y < rect.height / 2 ? 't' : 'b'}${x < rect.width / 2 ? 'l' : 'r'}`;
+                this.setPipCorner(corner);
+                return;
+            }
+
+            // Tap — swap main/pip cameras
+            this.swapVideos();
+        };
+
+        el.addEventListener('pointerdown', onStart);
+        window.addEventListener('pointermove', onMove, { passive: false });
+        window.addEventListener('pointerup', onEnd);
+        window.addEventListener('pointercancel', () => { dragging = false; });
+
+        el.addEventListener('touchstart', onStart, { passive: true });
+        el.addEventListener('touchmove', onMove, { passive: false });
+        el.addEventListener('touchend', onEnd);
+        el.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter' || e.key === ' ') {
+                e.preventDefault();
+                this.swapVideos();
+            }
+        });
     }
 
     isEchoConnected() {
@@ -1525,6 +1615,8 @@ class WebRTCCallManager {
         if (this.miniAvatar && this.peerAvatar) {
             this.miniAvatar.src = this.peerAvatar;
         }
+        // Keep compact single-row layout on live (Vite CSS may be missing).
+        this.forceMinimizedBarLayout();
     }
 
     setCallUiMode(mode) {
@@ -2375,6 +2467,78 @@ class WebRTCCallManager {
         this.attachStreamsToVideos();
     }
 
+    forceMinimizedBarLayout() {
+        const bar = this.minimizedEl || document.getElementById('call-minimized');
+        if (!bar) return;
+        this.minimizedEl = bar;
+
+        Object.assign(bar.style, {
+            display: 'block',
+            position: 'fixed',
+            top: '0',
+            left: '0',
+            right: '0',
+            zIndex: '100000',
+            background: '#059669',
+            paddingTop: 'env(safe-area-inset-top, 0px)',
+            height: 'auto',
+            maxHeight: 'calc(3.5rem + env(safe-area-inset-top, 0px))',
+            overflow: 'hidden',
+            boxShadow: '0 4px 20px rgba(5, 150, 105, 0.45)',
+            boxSizing: 'border-box',
+        });
+
+        const inner = bar.querySelector('.call-ongoing-inner');
+        if (inner) {
+            Object.assign(inner.style, {
+                display: 'flex',
+                flexDirection: 'row',
+                alignItems: 'center',
+                gap: '0.75rem',
+                padding: '0.55rem 0.85rem',
+                minHeight: '3.25rem',
+                maxHeight: '3.5rem',
+                width: '100%',
+                boxSizing: 'border-box',
+            });
+        }
+
+        const avatar = bar.querySelector('#mini-call-avatar');
+        if (avatar) {
+            Object.assign(avatar.style, {
+                width: '2.25rem',
+                height: '2.25rem',
+                borderRadius: '9999px',
+                objectFit: 'cover',
+                flexShrink: '0',
+            });
+        }
+
+        const video = bar.querySelector('#mini-call-video');
+        if (video && !video.classList.contains('hidden')) {
+            Object.assign(video.style, {
+                width: '2.5rem',
+                height: '2.5rem',
+                borderRadius: '0.5rem',
+                objectFit: 'cover',
+                flexShrink: '0',
+            });
+        }
+
+        const hangup = bar.querySelector('#mini-hangup-btn');
+        if (hangup) {
+            Object.assign(hangup.style, {
+                width: '2.5rem',
+                height: '2.5rem',
+                borderRadius: '9999px',
+                flexShrink: '0',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+            });
+        }
+    }
+
     minimizeCall() {
         if (!(this.isCallActive || this.isCalling || this.isIncoming)) return;
         if (this.isIncoming && !this.isCallActive) return;
@@ -2383,15 +2547,20 @@ class WebRTCCallManager {
         this.overlay?.classList.add('hidden');
         if (this.overlay) this.overlay.style.display = 'none';
         this.minimizedEl?.classList.remove('hidden');
-        if (this.minimizedEl) this.minimizedEl.style.display = '';
+        this.forceMinimizedBarLayout();
         this.setCallUiMode('mini');
         this.updateMinimizedUI();
+        // Re-assert compact layout after paint (live CSS race)
+        requestAnimationFrame(() => this.forceMinimizedBarLayout());
+        setTimeout(() => this.forceMinimizedBarLayout(), 50);
     }
 
     expandCall() {
         this.isMinimized = false;
         this.minimizedEl?.classList.add('hidden');
-        if (this.minimizedEl) this.minimizedEl.style.display = 'none';
+        if (this.minimizedEl) {
+            this.minimizedEl.style.display = 'none';
+        }
         this.overlay?.classList.remove('hidden');
         if (this.overlay) {
             this.overlay.style.display = 'flex';
@@ -2400,6 +2569,7 @@ class WebRTCCallManager {
             this.overlay.style.zIndex = '99999';
         }
         this.setCallUiMode('full');
+        this.setPipCorner(this.pipCorner || 'br');
         this.attachStreamsToVideos();
         this.updateMediaIndicators();
     }

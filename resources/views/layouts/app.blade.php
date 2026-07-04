@@ -151,7 +151,7 @@
                     Muted
                 </div>
                 <!-- PiP (tap to swap) -->
-                <button type="button" id="pip-video-wrap" class="absolute bottom-4 right-4 w-[200px] h-[150px] rounded-2xl overflow-hidden border border-white/20 shadow-2xl z-20 transition-all duration-300 hover:scale-105 group bg-slate-900" title="Tap to swap" style="height:150px;width:200px;">
+                <div id="pip-video-wrap" class="pip-br group" title="Drag to corner · Tap to swap" role="button" tabindex="0">
                     <video id="pip-call-video" autoplay playsinline muted class="w-full h-full object-cover bg-slate-900 pointer-events-none"></video>
                     <div id="pip-video-off-overlay" class="hidden absolute inset-0 flex items-center justify-center bg-slate-900/95">
                         <svg class="w-6 h-6 text-white/70" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z"/><path stroke-linecap="round" stroke-linejoin="round" d="M3 3l18 18"/></svg>
@@ -159,7 +159,7 @@
                     <div id="pip-muted-badge" class="hidden absolute top-1.5 left-1.5 z-20 w-6 h-6 rounded-full bg-black/70 text-white flex items-center justify-center">
                         <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z"/><path stroke-linecap="round" stroke-linejoin="round" d="M3 3l18 18"/></svg>
                     </div>
-                </button>
+                </div>
             </div>
             <audio id="remote-audio" autoplay playsinline class="sr-only"></audio>
 
