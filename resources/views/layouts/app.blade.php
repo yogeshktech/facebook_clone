@@ -85,6 +85,128 @@
         #call-overlay.hidden {
             display: none !important;
         }
+        #call-overlay .call-overlay-bg {
+            position: absolute !important;
+            inset: 0 !important;
+            z-index: 0 !important;
+            pointer-events: none !important;
+            background:
+                radial-gradient(ellipse at 20% 10%, rgba(99, 102, 241, 0.35), transparent 50%),
+                radial-gradient(ellipse at 80% 90%, rgba(147, 51, 234, 0.28), transparent 50%),
+                #020617 !important;
+        }
+        #call-profile-block {
+            width: 100% !important;
+            max-width: 28rem !important;
+            text-align: center !important;
+            margin-top: 3.5rem !important;
+            z-index: 10 !important;
+            position: relative !important;
+            padding: 0 1rem !important;
+        }
+        #call-profile-block.hidden { display: none !important; }
+        #call-avatar-wrap {
+            position: relative !important;
+            width: 8rem !important;
+            height: 8rem !important;
+            margin: 0 auto !important;
+            display: flex !important;
+            align-items: center !important;
+            justify-content: center !important;
+        }
+        #call-user-initials {
+            width: 7rem !important;
+            height: 7rem !important;
+            border-radius: 9999px !important;
+            display: flex !important;
+            align-items: center !important;
+            justify-content: center !important;
+            font-size: 1.75rem !important;
+            font-weight: 700 !important;
+            color: #fff !important;
+            background: #6366F1 !important;
+            border: 4px solid rgba(255,255,255,0.3) !important;
+            box-shadow: 0 12px 40px rgba(0,0,0,0.35) !important;
+            position: relative !important;
+            z-index: 10 !important;
+        }
+        #call-user-initials.hidden { display: none !important; }
+        #call-user-avatar {
+            width: 7rem !important;
+            height: 7rem !important;
+            border-radius: 9999px !important;
+            object-fit: cover !important;
+            border: 4px solid rgba(255,255,255,0.3) !important;
+            box-shadow: 0 12px 40px rgba(0,0,0,0.35) !important;
+            position: relative !important;
+            z-index: 10 !important;
+            background: #1e293b !important;
+        }
+        #call-user-avatar.hidden { display: none !important; }
+        #call-overlay .ripple-ring {
+            position: absolute !important;
+            width: 100% !important;
+            height: 100% !important;
+            border-radius: 50% !important;
+            border: 2px solid rgba(99, 102, 241, 0.35) !important;
+            animation: call-ring-ripple 3s infinite cubic-bezier(0.21, 0.61, 0.35, 1) !important;
+        }
+        #call-overlay .ripple-ring:nth-child(2) {
+            animation-delay: 1s !important;
+            border-color: rgba(139, 92, 246, 0.3) !important;
+        }
+        #call-overlay .ripple-ring:nth-child(3) {
+            animation-delay: 2s !important;
+            border-color: rgba(59, 130, 246, 0.25) !important;
+        }
+        @keyframes call-ring-ripple {
+            0% { transform: scale(0.85); opacity: 0.9; }
+            70% { transform: scale(1.35); opacity: 0; }
+            100% { transform: scale(1.35); opacity: 0; }
+        }
+        #call-user-name {
+            font-size: 1.5rem !important;
+            font-weight: 700 !important;
+            margin-top: 1.25rem !important;
+            color: #fff !important;
+            letter-spacing: -0.02em !important;
+        }
+        #call-status-pill {
+            display: inline-flex !important;
+            align-items: center !important;
+            gap: 0.5rem !important;
+            margin-top: 0.75rem !important;
+            padding: 0.375rem 1rem !important;
+            border-radius: 9999px !important;
+            background: rgba(255,255,255,0.1) !important;
+            border: 1px solid rgba(255,255,255,0.15) !important;
+            font-size: 0.75rem !important;
+            font-weight: 600 !important;
+            color: #fff !important;
+        }
+        #call-controls-bar {
+            width: 100% !important;
+            max-width: 28rem !important;
+            padding: 1rem 0.75rem !important;
+            border-radius: 1.5rem !important;
+            display: flex !important;
+            justify-content: center !important;
+            align-items: center !important;
+            gap: 0.75rem !important;
+            flex-wrap: wrap !important;
+            margin-bottom: 1.5rem !important;
+            z-index: 30 !important;
+            position: relative !important;
+            background: #0f172a !important;
+            border: 1px solid rgba(255,255,255,0.12) !important;
+            box-shadow: 0 12px 40px rgba(0,0,0,0.55) !important;
+            min-height: 4.5rem !important;
+        }
+        #call-controls-bar > button.call-btn-visible {
+            display: flex !important;
+            align-items: center !important;
+            justify-content: center !important;
+        }
         #call-minimized.call-ongoing-bar {
             position: fixed !important;
             top: 0 !important;
@@ -165,16 +287,17 @@
             </button>
             <span id="call-overlay-hint" class="hidden absolute top-4 right-3 z-30 text-[11px] font-semibold text-white/70 px-2 py-1 rounded-full bg-black/30">Tap ↓ to chat</span>
 
-            <!-- Call Header / Profile -->
+            <!-- Call Header / Profile (ringing / incoming — matches local UI) -->
             <div id="call-profile-block" class="w-full max-w-md text-center mt-14 z-10 relative px-4">
-                <div class="relative w-32 h-32 mx-auto flex items-center justify-center">
+                <div id="call-avatar-wrap" class="relative w-32 h-32 mx-auto flex items-center justify-center">
                     <div class="ripple-ring"></div>
                     <div class="ripple-ring"></div>
                     <div class="ripple-ring"></div>
-                    <img id="call-user-avatar" src="" alt="" class="w-28 h-28 rounded-full object-cover border-4 border-white/30 shadow-2xl relative z-10 animate-call-pulse bg-slate-800">
+                    <div id="call-user-initials" class="w-28 h-28 rounded-full flex items-center justify-center text-3xl font-bold text-white bg-indigo-500 border-4 border-white/30 shadow-2xl relative z-10" aria-hidden="true">?</div>
+                    <img id="call-user-avatar" src="" alt="" class="hidden w-28 h-28 rounded-full object-cover border-4 border-white/30 shadow-2xl relative z-10 animate-call-pulse bg-slate-800">
                 </div>
                 <h3 id="call-user-name" class="text-2xl sm:text-3xl font-bold mt-5 tracking-tight text-white">Username</h3>
-                <div class="inline-flex items-center gap-2 mt-3 px-4 py-1.5 rounded-full bg-white/10 border border-white/15 text-xs font-semibold tracking-wide text-white">
+                <div id="call-status-pill" class="inline-flex items-center gap-2 mt-3 px-4 py-1.5 rounded-full bg-white/10 border border-white/15 text-xs font-semibold tracking-wide text-white">
                     <span class="w-2 h-2 rounded-full bg-emerald-400 animate-ping"></span>
                     <span id="call-status">Connecting...</span>
                 </div>

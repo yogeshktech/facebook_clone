@@ -186,6 +186,7 @@ class WebRTCCallManager {
         this.overlay = null;
         this.minimizedEl = null;
         this.avatar = null;
+        this.avatarInitials = null;
         this.userName = null;
         this.status = null;
         this.videosContainer = null;
@@ -209,29 +210,12 @@ class WebRTCCallManager {
         this.speakerPickerHint = null;
     }
 
-    init() {
-        if (this._uiBound) return;
-
-        this.overlay = document.getElementById('call-overlay');
-        if (!this.overlay) {
-            console.error('Call UI missing (#call-overlay). Incoming calls cannot be shown.');
-            return;
-        }
-
-        // Escape any parent stacking context so call UI works on Home/Feed/Chat.
-        if (this.overlay.parentElement !== document.body) {
-            document.body.appendChild(this.overlay);
-        }
-        const mini = document.getElementById('call-minimized');
-        if (mini && mini.parentElement !== document.body) {
-            document.body.appendChild(mini);
-        }
-
-        this._uiBound = true;
-        this.toneGen.bindUnlock();
-
+    /** Re-query call DOM nodes (live can miss refs if init raced layout). */
+    bindCallDom() {
+        this.overlay = document.getElementById('call-overlay') || this.overlay;
         this.minimizedEl = document.getElementById('call-minimized');
         this.avatar = document.getElementById('call-user-avatar');
+        this.avatarInitials = document.getElementById('call-user-initials');
         this.userName = document.getElementById('call-user-name');
         this.status = document.getElementById('call-status');
         this.videosContainer = document.getElementById('call-videos-container');
@@ -271,6 +255,77 @@ class WebRTCCallManager {
         this.speakerPickerHint = document.getElementById('speaker-picker-hint');
         this.speakerPickerBackdrop = document.getElementById('speaker-picker-backdrop');
         this.speakerPickerClose = document.getElementById('speaker-picker-close');
+
+        if (this.avatar && !this.avatar.dataset.avatarFallbackBound) {
+            this.avatar.dataset.avatarFallbackBound = '1';
+            this.avatar.addEventListener('error', () => this.showAvatarInitials(true));
+            this.avatar.addEventListener('load', () => {
+                if (this.avatar?.currentSrc || this.avatar?.src) {
+                    this.revealAvatarImage();
+                }
+            });
+        }
+    }
+
+    peerInitials(name = '') {
+        const parts = String(name || this.peerName || 'U').trim().split(/\s+/).filter(Boolean);
+        if (!parts.length) return 'U';
+        if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
+        return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
+    }
+
+    /** @param {boolean} clearSrc - true when image failed (404 on live) */
+    showAvatarInitials(clearSrc = false) {
+        if (this.avatarInitials) {
+            this.avatarInitials.textContent = this.peerInitials();
+            this.avatarInitials.classList.remove('hidden');
+            this.avatarInitials.style.setProperty('display', 'flex', 'important');
+        }
+        if (this.avatar) {
+            this.avatar.classList.add('hidden');
+            this.avatar.style.setProperty('display', 'none', 'important');
+            if (clearSrc) {
+                this.avatar.removeAttribute('src');
+            }
+        }
+    }
+
+    /** Show photo only after it actually loads (avoids empty white ring on live 404). */
+    revealAvatarImage() {
+        if (!this.avatar?.src) {
+            this.showAvatarInitials(true);
+            return;
+        }
+        this.avatar.classList.remove('hidden');
+        this.avatar.style.setProperty('display', 'block', 'important');
+        if (this.avatarInitials) {
+            this.avatarInitials.classList.add('hidden');
+            this.avatarInitials.style.setProperty('display', 'none', 'important');
+        }
+    }
+
+    init() {
+        if (this._uiBound) return;
+
+        this.overlay = document.getElementById('call-overlay');
+        if (!this.overlay) {
+            console.error('Call UI missing (#call-overlay). Incoming calls cannot be shown.');
+            return;
+        }
+
+        // Escape any parent stacking context so call UI works on Home/Feed/Chat.
+        if (this.overlay.parentElement !== document.body) {
+            document.body.appendChild(this.overlay);
+        }
+        const mini = document.getElementById('call-minimized');
+        if (mini && mini.parentElement !== document.body) {
+            document.body.appendChild(mini);
+        }
+
+        this._uiBound = true;
+        this.toneGen.bindUnlock();
+
+        this.bindCallDom();
 
         this.declineBtn?.addEventListener('click', (e) => {
             e.preventDefault();
@@ -846,11 +901,31 @@ class WebRTCCallManager {
             if (this.userName) this.userName.textContent = peerInfo.name;
             if (this.miniName) this.miniName.textContent = peerInfo.name;
         }
-        if (peerInfo.avatar) {
-            this.peerAvatar = peerInfo.avatar;
-            if (this.avatar) this.avatar.src = peerInfo.avatar;
-            if (this.miniAvatar) this.miniAvatar.src = peerInfo.avatar;
-            if (this.mainVideoOffAvatar) this.mainVideoOffAvatar.src = peerInfo.avatar;
+
+        if (this.avatarInitials) {
+            this.avatarInitials.textContent = this.peerInitials(peerInfo.name || this.peerName);
+        }
+
+        const avatarUrl = (peerInfo.avatar || '').trim();
+        // Skip broken/empty paths — live often 404s /media/avatars/* so show initials like local.
+        const usableAvatar = avatarUrl
+            && !avatarUrl.includes('undefined')
+            && avatarUrl !== 'null';
+
+        if (usableAvatar) {
+            this.peerAvatar = avatarUrl;
+            // Initials first; swap to photo only on successful load.
+            this.showAvatarInitials(false);
+            if (this.avatar) {
+                this.avatar.src = avatarUrl;
+            }
+            if (this.miniAvatar) this.miniAvatar.src = avatarUrl;
+            if (this.mainVideoOffAvatar) this.mainVideoOffAvatar.src = avatarUrl;
+        } else {
+            this.peerAvatar = '';
+            this.showAvatarInitials(true);
+            if (this.miniAvatar) this.miniAvatar.removeAttribute('src');
+            if (this.mainVideoOffAvatar) this.mainVideoOffAvatar.removeAttribute('src');
         }
     }
 
@@ -1281,33 +1356,53 @@ class WebRTCCallManager {
     setBtnVisible(btn, visible) {
         if (!btn) return;
         btn.classList.toggle('hidden', !visible);
-        btn.style.display = visible ? 'flex' : 'none';
-        btn.style.alignItems = 'center';
-        btn.style.justifyContent = 'center';
+        btn.classList.toggle('call-btn-visible', !!visible);
+        // !important so live Tailwind .hidden never wins over inline display
+        btn.style.setProperty('display', visible ? 'flex' : 'none', 'important');
+        btn.style.setProperty('align-items', 'center', 'important');
+        btn.style.setProperty('justify-content', 'center', 'important');
+        if (visible) {
+            btn.style.setProperty('visibility', 'visible', 'important');
+            btn.style.setProperty('opacity', '1', 'important');
+        }
     }
 
     /** phase: 'incoming' | 'outgoing' | 'active' | 'none' */
     setCallPhase(phase) {
+        this.bindCallDom();
+
         const incoming = phase === 'incoming';
         const outgoing = phase === 'outgoing';
         const active = phase === 'active';
-        const inCall = outgoing || active;
+        // Ringing (outgoing): only End Call — matches WhatsApp / local feel.
+        // Active: full media controls.
+        const showHangup = outgoing || active;
+        const showMedia = active;
 
         this.setBtnVisible(this.acceptBtn, incoming);
         this.setBtnVisible(this.declineBtn, incoming);
-        this.setBtnVisible(this.hangupBtn, inCall);
-        this.setBtnVisible(this.muteBtn, inCall);
-        this.setBtnVisible(this.speakerBtn, inCall);
+        this.setBtnVisible(this.hangupBtn, showHangup);
+        this.setBtnVisible(this.muteBtn, showMedia);
+        this.setBtnVisible(this.speakerBtn, showMedia);
 
-        const showVideoBtns = inCall && this.isVideo && !!this.localStream?.getVideoTracks?.().length;
+        const showVideoBtns = showMedia && this.isVideo && !!this.localStream?.getVideoTracks?.().length;
         this.setBtnVisible(this.videoBtn, showVideoBtns);
         this.setBtnVisible(this.flipBtn, showVideoBtns);
 
         if (this.minimizeBtn) {
-            this.setBtnVisible(this.minimizeBtn, inCall);
+            this.setBtnVisible(this.minimizeBtn, showHangup);
         }
 
-        if (inCall) {
+        // Ringing / incoming: always show profile (avatar or initials), hide video stage.
+        if (incoming || outgoing) {
+            this.profileBlock?.classList.remove('hidden');
+            if (this.profileBlock) this.profileBlock.style.display = '';
+            this.videosContainer?.classList.add('hidden');
+            if (this.videosContainer) this.videosContainer.style.display = 'none';
+            this.audioPulse?.classList.add('hidden');
+        }
+
+        if (showMedia) {
             this.updateLocalControlStyles();
             this.updateSpeakerButtonUI();
         }
@@ -1465,12 +1560,29 @@ class WebRTCCallManager {
 
         this.showOverlay();
         this.setPeerInfo(peerInfo);
-        this.status.textContent = this.targetOffline
-            ? 'Calling... (user offline)'
-            : 'Calling...';
+        if (this.status) {
+            this.status.textContent = this.targetOffline
+                ? 'Calling... (user offline)'
+                : 'Calling...';
+        }
         this.setCallPhase('outgoing');
+        this.forceShowCallUi();
         this.resetAudioRoute();
         this.bindAudioDeviceWatcher();
+
+        // Re-assert ringing UI (live CSS / DOM race — same as incoming)
+        const assertOutgoing = () => {
+            if (!this.isCalling || this.isCallActive) return;
+            this.forceShowCallUi();
+            this.setCallPhase('outgoing');
+            if (this.status && !this.targetOffline) {
+                this.status.textContent = 'Calling...';
+            }
+        };
+        requestAnimationFrame(assertOutgoing);
+        setTimeout(assertOutgoing, 50);
+        setTimeout(assertOutgoing, 300);
+        setTimeout(assertOutgoing, 800);
 
         if (!this.targetOffline) {
             this.toneGen.startDial();
@@ -1479,8 +1591,9 @@ class WebRTCCallManager {
         try {
             this.localStream = await this.getLocalMedia(isVideo);
 
-            this.showLocalVideoPreview();
+            // Keep profile + hangup during ring (do not switch to video stage yet).
             this.setCallPhase('outgoing');
+            this.forceShowCallUi();
             await this.refreshAudioOutputs();
             await this.applyAudioOutput();
 
@@ -1580,6 +1693,7 @@ class WebRTCCallManager {
                 this.wasAnswered = true;
                 this.clearCallTimeouts();
                 this.stopIncomingAlert();
+                this.updateCallUI();
                 if (this.remoteStream) this.attachRemoteStream(this.remoteStream);
                 this.attachStreamsToVideos();
                 this.ensureRemoteAudioPlaying();
