@@ -204,13 +204,13 @@
         }
         /* Phase-driven buttons — works on live even if JS display toggles fail */
         #call-controls-bar > button {
-            display: none !important;
+            /* display: none !important;
             align-items: center !important;
             justify-content: center !important;
-            flex-shrink: 0 !important;
-            visibility: hidden !important;
+            flex-shrink: 0 !important; */
+            /* visibility: hidden !important; */
             /* opacity: 0 !important; */
-            pointer-events: none !important;
+            /* pointer-events: none !important; */
         }
         #call-overlay[data-call-phase="incoming"] #decline-call-btn,
         #call-overlay[data-call-phase="incoming"] #accept-call-btn,
