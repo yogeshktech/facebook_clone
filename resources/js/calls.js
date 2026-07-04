@@ -213,7 +213,19 @@ class WebRTCCallManager {
         if (this._uiBound) return;
 
         this.overlay = document.getElementById('call-overlay');
-        if (!this.overlay) return;
+        if (!this.overlay) {
+            console.error('Call UI missing (#call-overlay). Incoming calls cannot be shown.');
+            return;
+        }
+
+        // Escape any parent stacking context so call UI works on Home/Feed/Chat.
+        if (this.overlay.parentElement !== document.body) {
+            document.body.appendChild(this.overlay);
+        }
+        const mini = document.getElementById('call-minimized');
+        if (mini && mini.parentElement !== document.body) {
+            document.body.appendChild(mini);
+        }
 
         this._uiBound = true;
         this.toneGen.bindUnlock();
@@ -501,42 +513,63 @@ class WebRTCCallManager {
         }
     }
 
-    ingestSignal(payload) {
-        if (!payload || !payload.type) return;
+    sameUserId(a, b) {
+        if (a == null || b == null || a === '' || b === '') return false;
+        return Number(a) === Number(b);
+    }
 
-        const callId = payload.data?.call_id || '';
-        const fromId = payload.from_user?.id || '';
-        let signalId = payload._id;
-        if (!signalId) {
-            if (payload.type === 'offer' || payload.type === 'answer') {
-                signalId = `${payload.type}:${callId}:${fromId}`;
-            } else if (payload.type === 'candidate') {
-                signalId = `candidate:${fromId}:${payload.data?.candidate || JSON.stringify(payload.data || {})}`;
-            } else if (payload.type === 'media_state') {
-                signalId = `media:${fromId}:${payload.data?.muted}:${payload.data?.video_off}:${payload._at || ''}`;
-            } else {
-                signalId = `${payload.type}:${callId}:${fromId}`;
-            }
-        }
+    sameCallId(data = {}) {
+        const incoming = data?.call_id;
+        if (!incoming || !this.callId) return true;
+        return String(incoming) === String(this.callId);
+    }
 
-        if (this._seenSignalIds.has(signalId)) return;
-        this._seenSignalIds.add(signalId);
-
-        // Same logical offer/answer from Echo + inbox
-        if (callId && (payload.type === 'offer' || payload.type === 'answer')) {
-            this._seenSignalIds.add(`${payload.type}:${callId}:${fromId}`);
-        }
-
+    markSignalSeen(ids = []) {
+        ids.filter(Boolean).forEach((id) => this._seenSignalIds.add(id));
         if (this._seenSignalIds.size > 300) {
             const keep = [...this._seenSignalIds].slice(-120);
             this._seenSignalIds = new Set(keep);
         }
+    }
 
-        // Own hangup/decline already handled locally — ignore inbox echo when idle.
-        if (['hangup', 'decline'].includes(payload.type) && fromId === window.authUserId) {
-            if (!(this.isCallActive || this.isCalling || this.isIncoming)) return;
+    signalKeys(payload) {
+        const callId = payload.data?.call_id || '';
+        const fromId = payload.from_user?.id ?? '';
+        const keys = [];
+
+        if (payload._id) keys.push(payload._id);
+
+        if (payload.type === 'offer' || payload.type === 'answer' || payload.type === 'hangup' || payload.type === 'decline') {
+            if (callId) keys.push(`${payload.type}:${callId}:${fromId}`);
+        } else if (payload.type === 'candidate') {
+            keys.push(`candidate:${callId}:${fromId}:${payload.data?.candidate || ''}`);
+        } else if (payload.type === 'media_state') {
+            keys.push(`media:${callId}:${fromId}:${payload.data?.muted}:${payload.data?.video_off}:${payload._at || ''}`);
+        } else if (callId) {
+            keys.push(`${payload.type}:${callId}:${fromId}`);
         }
 
+        return keys;
+    }
+
+    ingestSignal(payload) {
+        if (!payload || !payload.type) return;
+
+        const keys = this.signalKeys(payload);
+        if (keys.some((key) => this._seenSignalIds.has(key))) return;
+
+        const fromId = payload.from_user?.id;
+
+        // Own hangup/decline already handled locally — ignore inbox echo when idle.
+        if (['hangup', 'decline'].includes(payload.type) && this.sameUserId(fromId, window.authUserId)) {
+            if (!(this.isCallActive || this.isCalling || this.isIncoming)) {
+                this.markSignalSeen(keys);
+                return;
+            }
+        }
+
+        // Mark after we accept the signal for handling (failed answer can retry below).
+        this.markSignalSeen(keys);
         this.handleIncomingSignal(payload);
     }
 
@@ -595,24 +628,32 @@ class WebRTCCallManager {
     }
 
     prepareRemoteSdp(sdp) {
-        const normalized = this.normalizeSdp(sdp);
-        const lines = normalized.split(/\r?\n/).filter((line) => {
-            const trimmed = line.trim();
-            if (!trimmed) return false;
-            // Legacy Plan-B ssrc/msid lines break setRemoteDescription on some Chromium builds
-            if (trimmed.startsWith('a=ssrc:') && trimmed.includes(' msid:')) return false;
-            if (trimmed.startsWith('a=ssrc-group:')) return false;
-            return true;
-        });
-
-        return `${lines.join('\r\n')}\r\n`;
+        // Normalize line endings only — do not strip media lines (breaks remote video).
+        return this.normalizeSdp(sdp);
     }
 
     async setRemoteSdp(type, sdp) {
         const cleaned = this.prepareRemoteSdp(sdp);
-        await this.peerConnection.setRemoteDescription(
-            new RTCSessionDescription({ type, sdp: cleaned }),
-        );
+        try {
+            await this.peerConnection.setRemoteDescription(
+                new RTCSessionDescription({ type, sdp: cleaned }),
+            );
+        } catch (e) {
+            // Rare Plan-B legacy SDP: retry without old ssrc/msid lines.
+            const fallback = this.normalizeSdp(sdp)
+                .split(/\r?\n/)
+                .filter((line) => {
+                    const trimmed = line.trim();
+                    if (!trimmed) return false;
+                    if (trimmed.startsWith('a=ssrc:') && trimmed.includes(' msid:')) return false;
+                    if (trimmed.startsWith('a=ssrc-group:')) return false;
+                    return true;
+                })
+                .join('\r\n') + '\r\n';
+            await this.peerConnection.setRemoteDescription(
+                new RTCSessionDescription({ type, sdp: fallback }),
+            );
+        }
     }
 
     callMeta(extra = {}) {
@@ -740,10 +781,12 @@ class WebRTCCallManager {
     applyRemoteMediaState(data = {}) {
         this.remoteMuted = !!data.muted;
         if (typeof data.video_off === 'boolean') {
-            this.remoteVideoOff = data.video_off;
+            // Don't hide remote video if track is actually live (stale signal).
+            this.remoteVideoOff = data.video_off && !this.hasLiveVideoTrack(this.remoteStream);
         }
         this.updateMediaIndicators();
         this.updateMinimizedUI();
+        if (this.isVideo) this.attachStreamsToVideos();
     }
 
     mediaErrorMessage(error) {
@@ -765,35 +808,36 @@ class WebRTCCallManager {
             throw new Error('This browser does not support calls.');
         }
 
-        const constraints = {
-            audio: true,
-            video: isVideo
-                ? { facingMode: { ideal: this.facingMode } }
-                : false,
-        };
-
-        try {
-            return await navigator.mediaDevices.getUserMedia(constraints);
-        } catch (error) {
-            if (isVideo) {
-                try {
-                    return await navigator.mediaDevices.getUserMedia({
-                        audio: true,
-                        video: true,
-                    });
-                } catch (retryError) {
-                    try {
-                        return await navigator.mediaDevices.getUserMedia({
-                            audio: true,
-                            video: false,
-                        });
-                    } catch (audioOnlyError) {
-                        throw audioOnlyError;
-                    }
-                }
-            }
-            throw error;
+        if (!isVideo) {
+            return navigator.mediaDevices.getUserMedia({ audio: true, video: false });
         }
+
+        // Video call: always require a camera track (no silent audio-only fallback).
+        const attempts = [
+            { audio: true, video: { facingMode: { ideal: this.facingMode || 'user' }, width: { ideal: 1280 }, height: { ideal: 720 } } },
+            { audio: true, video: { facingMode: this.facingMode || 'user' } },
+            { audio: true, video: true },
+        ];
+
+        let lastError = null;
+        for (const constraints of attempts) {
+            try {
+                const stream = await navigator.mediaDevices.getUserMedia(constraints);
+                if (!stream.getVideoTracks().length) {
+                    stream.getTracks().forEach((t) => t.stop());
+                    throw new Error('Camera track missing');
+                }
+                // Ensure camera is live/enabled so the other side receives frames.
+                stream.getVideoTracks().forEach((t) => {
+                    t.enabled = true;
+                });
+                return stream;
+            } catch (error) {
+                lastError = error;
+            }
+        }
+
+        throw lastError || new Error('Could not access camera.');
     }
 
     setPeerInfo(peerInfo = {}) {
@@ -812,54 +856,111 @@ class WebRTCCallManager {
 
     playVideoEl(el) {
         if (!el) return;
-        el.play().catch(() => {});
+        el.setAttribute('playsinline', '');
+        el.setAttribute('autoplay', '');
+        el.playsInline = true;
+        el.autoplay = true;
+        const run = () => el.play().catch(() => {});
+        run();
+        // Retry — mobile browsers often block the first play() until layout is ready.
+        setTimeout(run, 100);
+        setTimeout(run, 400);
+    }
+
+    bindStreamToVideo(el, stream, { muted = true } = {}) {
+        if (!el) return;
+        // Force refresh: some browsers ignore addTrack on an existing srcObject.
+        if (el.srcObject !== stream) {
+            el.srcObject = null;
+        }
+        el.srcObject = stream || null;
+        el.muted = muted;
+        if (stream) this.playVideoEl(el);
+    }
+
+    hasLiveVideoTrack(stream) {
+        return !!stream?.getVideoTracks?.().some(
+            (t) => t && t.readyState === 'live' && t.enabled,
+        );
+    }
+
+    showVideoStage() {
+        if (!this.isVideo) return;
+        if (this.videosContainer) {
+            this.videosContainer.classList.remove('hidden');
+            Object.assign(this.videosContainer.style, {
+                display: 'flex',
+                visibility: 'visible',
+                opacity: '1',
+                position: 'relative',
+                zIndex: '10',
+                width: '100%',
+                maxWidth: '42rem',
+                flex: '1 1 auto',
+                minHeight: '220px',
+            });
+        }
+        if (this.mainVideo) {
+            Object.assign(this.mainVideo.style, {
+                display: 'block',
+                width: '100%',
+                height: '100%',
+                objectFit: 'cover',
+                background: '#0f172a',
+            });
+        }
+        this.profileBlock?.classList.add('hidden');
+        this.audioPulse?.classList.add('hidden');
     }
 
     attachStreamsToVideos() {
         if (!this.isVideo) return;
 
+        this.showVideoStage();
+
         const local = this.localStream;
         const remote = this.remoteStream;
         const mainShowsRemote = !this.videosSwapped;
 
-        // Keep video elements muted — remote audio always plays via #remote-audio (setSinkId).
-        if (this.mainVideo) {
-            this.mainVideo.srcObject = mainShowsRemote ? remote : local;
-            this.mainVideo.muted = true;
-            this.playVideoEl(this.mainVideo);
+        // If remote video track is live, clear stale "camera off" flag.
+        if (this.hasLiveVideoTrack(remote)) {
+            this.remoteVideoOff = false;
         }
 
-        if (this.pipVideo) {
-            this.pipVideo.srcObject = mainShowsRemote ? local : remote;
-            this.pipVideo.muted = true;
-            this.playVideoEl(this.pipVideo);
-        }
-
-        if (this.miniVideo) {
-            this.miniVideo.srcObject = remote || local;
-            this.miniVideo.muted = true;
-            this.playVideoEl(this.miniVideo);
-        }
+        // Keep video elements muted — remote audio plays via #remote-audio.
+        this.bindStreamToVideo(this.mainVideo, mainShowsRemote ? remote : local, { muted: true });
+        this.bindStreamToVideo(this.pipVideo, mainShowsRemote ? local : remote, { muted: true });
+        this.bindStreamToVideo(this.miniVideo, remote || local, { muted: true });
 
         this.updateMediaIndicators();
         this.updateMinimizedUI();
     }
 
     attachRemoteStream(stream) {
+        if (!stream) return;
         this.remoteStream = stream;
 
+        // Watch tracks so video appears when it unmutes / starts.
+        stream.getTracks().forEach((track) => {
+            track.onunmute = () => this.attachStreamsToVideos();
+            track.onmute = () => this.updateMediaIndicators();
+            track.onended = () => this.updateMediaIndicators();
+            if (track.kind === 'video' && track.readyState === 'live' && track.enabled) {
+                this.remoteVideoOff = false;
+            }
+        });
+
         if (this.remoteAudio) {
-            this.remoteAudio.srcObject = stream;
-            this.playVideoEl(this.remoteAudio);
-            this.applyAudioOutput();
+            this.bindStreamToVideo(this.remoteAudio, stream, { muted: false });
+            this.ensureRemoteAudioPlaying();
         }
 
         if (this.isVideo) {
             this.attachStreamsToVideos();
+        } else {
+            this.updateMediaIndicators();
+            this.updateMinimizedUI();
         }
-
-        this.updateMediaIndicators();
-        this.updateMinimizedUI();
     }
 
     supportsSinkId() {
@@ -1067,10 +1168,8 @@ class WebRTCCallManager {
     updateSpeakerButtonUI() {
         const active = this.audioRoute === 'speaker' || this.audioRoute === 'bluetooth';
         if (this.speakerBtn) {
-            this.speakerBtn.classList.toggle('bg-indigo-600', active);
-            this.speakerBtn.classList.toggle('border-indigo-400', active);
-            this.speakerBtn.classList.toggle('bg-slate-600', !active);
-            this.speakerBtn.classList.toggle('border-white/20', !active);
+            this.speakerBtn.style.background = active ? '#4f46e5' : '#334155';
+            this.speakerBtn.style.borderColor = active ? '#818cf8' : 'rgba(255,255,255,0.12)';
             const meta = this.routeMeta(this.audioRoute);
             this.speakerBtn.title = `Audio: ${meta.title}`;
         }
@@ -1175,27 +1274,47 @@ class WebRTCCallManager {
 
     showLocalVideoPreview() {
         if (!this.isVideo || !this.localStream) return;
-
-        this.videosContainer?.classList.remove('hidden');
-        this.audioPulse?.classList.add('hidden');
-        this.profileBlock?.classList.add('hidden');
+        this.showVideoStage();
         this.attachStreamsToVideos();
     }
 
+    setBtnVisible(btn, visible) {
+        if (!btn) return;
+        btn.classList.toggle('hidden', !visible);
+        btn.style.display = visible ? 'flex' : 'none';
+        btn.style.alignItems = 'center';
+        btn.style.justifyContent = 'center';
+    }
+
+    /** phase: 'incoming' | 'outgoing' | 'active' | 'none' */
+    setCallPhase(phase) {
+        const incoming = phase === 'incoming';
+        const outgoing = phase === 'outgoing';
+        const active = phase === 'active';
+        const inCall = outgoing || active;
+
+        this.setBtnVisible(this.acceptBtn, incoming);
+        this.setBtnVisible(this.declineBtn, incoming);
+        this.setBtnVisible(this.hangupBtn, inCall);
+        this.setBtnVisible(this.muteBtn, inCall);
+        this.setBtnVisible(this.speakerBtn, inCall);
+
+        const showVideoBtns = inCall && this.isVideo && !!this.localStream?.getVideoTracks?.().length;
+        this.setBtnVisible(this.videoBtn, showVideoBtns);
+        this.setBtnVisible(this.flipBtn, showVideoBtns);
+
+        if (this.minimizeBtn) {
+            this.setBtnVisible(this.minimizeBtn, inCall);
+        }
+
+        if (inCall) {
+            this.updateLocalControlStyles();
+            this.updateSpeakerButtonUI();
+        }
+    }
+
     showMediaControls() {
-        this.muteBtn?.classList.remove('hidden');
-        this.speakerBtn?.classList.remove('hidden');
-        this.updateSpeakerButtonUI();
-        if (this.isVideo && this.localStream?.getVideoTracks().length) {
-            this.videoBtn?.classList.remove('hidden');
-            this.flipBtn?.classList.remove('hidden');
-        } else {
-            this.videoBtn?.classList.add('hidden');
-            this.flipBtn?.classList.add('hidden');
-        }
-        if (this.isCallActive || this.isCalling) {
-            this.minimizeBtn?.classList.remove('hidden');
-        }
+        this.setCallPhase(this.isIncoming && !this.isCallActive ? 'incoming' : (this.isCalling && !this.isCallActive ? 'outgoing' : 'active'));
     }
 
     updateLocalControlStyles() {
@@ -1214,15 +1333,15 @@ class WebRTCCallManager {
 
     setCtrlActive(btn, active) {
         if (!btn) return;
-        btn.classList.toggle('bg-rose-600', active);
-        btn.classList.toggle('border-rose-400', active);
-        btn.classList.toggle('bg-slate-600', !active);
-        btn.classList.toggle('border-white/20', !active);
+        btn.style.background = active ? '#e11d48' : '#334155';
+        btn.style.borderColor = active ? '#fb7185' : 'rgba(255,255,255,0.12)';
         btn.classList.toggle('call-ctrl-off', active);
 
         const iconOn = btn.querySelector('[data-icon-on]');
         const iconOff = btn.querySelector('[data-icon-off]');
         if (iconOn && iconOff) {
+            iconOn.style.display = active ? 'none' : 'block';
+            iconOff.style.display = active ? 'block' : 'none';
             iconOn.classList.toggle('hidden', active);
             iconOff.classList.toggle('hidden', !active);
         }
@@ -1231,15 +1350,23 @@ class WebRTCCallManager {
     updateMediaIndicators() {
         const mainShowsRemote = !this.videosSwapped;
         const mainMuted = mainShowsRemote ? this.remoteMuted : this.localMuted;
-        const mainVideoOff = mainShowsRemote ? this.remoteVideoOff : this.localVideoOff;
+        const remoteCamOff = this.remoteVideoOff && !this.hasLiveVideoTrack(this.remoteStream);
+        const localCamOff = this.localVideoOff && !this.hasLiveVideoTrack(this.localStream);
+        const mainVideoOff = mainShowsRemote ? remoteCamOff : localCamOff;
         const pipMuted = mainShowsRemote ? this.localMuted : this.remoteMuted;
-        const pipVideoOff = mainShowsRemote ? this.localVideoOff : this.remoteVideoOff;
+        const pipVideoOff = mainShowsRemote ? localCamOff : remoteCamOff;
 
         if (this.isVideo) {
             this.mainMutedBadge?.classList.toggle('hidden', !mainMuted);
             this.pipMutedBadge?.classList.toggle('hidden', !pipMuted);
             this.mainVideoOffOverlay?.classList.toggle('hidden', !mainVideoOff);
+            if (this.mainVideoOffOverlay) {
+                this.mainVideoOffOverlay.style.display = mainVideoOff ? 'flex' : 'none';
+            }
             this.pipVideoOffOverlay?.classList.toggle('hidden', !pipVideoOff);
+            if (this.pipVideoOffOverlay) {
+                this.pipVideoOffOverlay.style.display = pipVideoOff ? 'flex' : 'none';
+            }
 
             if (this.mainVideoOffAvatar) {
                 this.mainVideoOffAvatar.src = mainShowsRemote ? (this.peerAvatar || '') : '';
@@ -1341,14 +1468,7 @@ class WebRTCCallManager {
         this.status.textContent = this.targetOffline
             ? 'Calling... (user offline)'
             : 'Calling...';
-        this.declineBtn.classList.add('hidden');
-        this.acceptBtn.classList.add('hidden');
-        this.hangupBtn.classList.remove('hidden');
-        this.muteBtn.classList.add('hidden');
-        this.videoBtn.classList.add('hidden');
-        this.speakerBtn?.classList.add('hidden');
-        this.flipBtn?.classList.add('hidden');
-        this.minimizeBtn?.classList.remove('hidden');
+        this.setCallPhase('outgoing');
         this.resetAudioRoute();
         this.bindAudioDeviceWatcher();
 
@@ -1360,7 +1480,7 @@ class WebRTCCallManager {
             this.localStream = await this.getLocalMedia(isVideo);
 
             this.showLocalVideoPreview();
-            this.showMediaControls();
+            this.setCallPhase('outgoing');
             await this.refreshAudioOutputs();
             await this.applyAudioOutput();
 
@@ -1379,6 +1499,15 @@ class WebRTCCallManager {
                 throw new Error(sent.message || 'Could not reach call server.');
             }
 
+            // Apply answer that arrived while media/PC was still setting up.
+            if (this._pendingAnswer) {
+                const pending = this._pendingAnswer;
+                this._pendingAnswer = null;
+                clearTimeout(this._pendingAnswerTimer);
+                this._pendingAnswerTimer = null;
+                await this.handleAnswer(pending.data, pending.payload);
+            }
+
             this.bumpInboxPolling();
             // Caller must receive answer + ICE quickly.
             setTimeout(() => this.pullInbox(), 300);
@@ -1392,23 +1521,42 @@ class WebRTCCallManager {
     }
 
     createPeerConnection() {
-        this.peerConnection = new RTCPeerConnection({ iceServers: this.getIceServers() });
+        this.peerConnection = new RTCPeerConnection({
+            iceServers: this.getIceServers(),
+            iceCandidatePoolSize: 4,
+        });
 
+        // Explicit sendrecv transceivers so both sides always negotiate camera+mic.
         if (this.localStream) {
-            this.localStream.getTracks().forEach((track) => {
-                this.peerConnection.addTrack(track, this.localStream);
-            });
+            const audioTrack = this.localStream.getAudioTracks()[0];
+            const videoTrack = this.localStream.getVideoTracks()[0];
+
+            if (audioTrack) {
+                this.peerConnection.addTrack(audioTrack, this.localStream);
+            } else {
+                this.peerConnection.addTransceiver('audio', { direction: 'recvonly' });
+            }
+
+            if (this.isVideo) {
+                if (videoTrack) {
+                    videoTrack.enabled = true;
+                    this.peerConnection.addTrack(videoTrack, this.localStream);
+                } else {
+                    this.peerConnection.addTransceiver('video', { direction: 'recvonly' });
+                }
+            }
+        } else {
+            this.peerConnection.addTransceiver('audio', { direction: 'recvonly' });
+            if (this.isVideo) {
+                this.peerConnection.addTransceiver('video', { direction: 'recvonly' });
+            }
         }
 
         this.peerConnection.ontrack = (event) => {
-            const stream = event.streams?.[0] || new MediaStream([event.track]);
-            if (!this.remoteStream) {
-                this.remoteStream = stream;
-            } else if (event.track && !this.remoteStream.getTracks().includes(event.track)) {
-                this.remoteStream.addTrack(event.track);
-            }
-            this.attachRemoteStream(this.remoteStream);
+            this.ingestRemoteTrack(event.track, event.streams?.[0]);
         };
+
+        this.startRemoteTrackSync();
 
         this.peerConnection.onicecandidate = (event) => {
             if (event.candidate) {
@@ -1425,8 +1573,11 @@ class WebRTCCallManager {
                 this.wasAnswered = true;
                 this.clearCallTimeouts();
                 this.stopIncomingAlert();
+                if (this.remoteStream) this.attachRemoteStream(this.remoteStream);
+                this.attachStreamsToVideos();
+                this.ensureRemoteAudioPlaying();
                 this.bumpInboxPolling();
-            } else if (ice === 'checking' || ice === 'connected') {
+            } else if (ice === 'checking') {
                 if (this.status && this.status.textContent !== 'Connected') {
                     this.status.textContent = 'Connecting...';
                 }
@@ -1448,6 +1599,12 @@ class WebRTCCallManager {
                 this.clearCallTimeouts();
                 this.stopIncomingAlert();
                 this.updateCallUI();
+                // Ensure remote camera paints after ICE connects.
+                if (this.remoteStream) {
+                    this.attachRemoteStream(this.remoteStream);
+                }
+                this.attachStreamsToVideos();
+                this.ensureRemoteAudioPlaying();
                 this.sendMediaState();
                 this.bumpInboxPolling();
                 return;
@@ -1478,6 +1635,77 @@ class WebRTCCallManager {
                 this.cleanup();
             }
         };
+    }
+
+    ingestRemoteTrack(track, eventStream) {
+        if (!track) return;
+
+        let stream = eventStream;
+        if (stream) {
+            // Always clone so <video srcObject> updates reliably.
+            this.remoteStream = new MediaStream(stream.getTracks());
+        } else {
+            const tracks = this.remoteStream ? [...this.remoteStream.getTracks()] : [];
+            if (!tracks.find((t) => t.id === track.id)) {
+                tracks.push(track);
+            }
+            this.remoteStream = new MediaStream(tracks);
+        }
+
+        if (track.kind === 'video') {
+            this.isVideo = true;
+            this.remoteVideoOff = false;
+            track.enabled = true;
+        }
+
+        track.onunmute = () => {
+            if (track.kind === 'video') this.remoteVideoOff = false;
+            this.attachRemoteStream(this.remoteStream);
+        };
+        track.onmute = () => this.updateMediaIndicators();
+        track.onended = () => this.syncRemoteTracksFromPeer();
+
+        this.attachRemoteStream(this.remoteStream);
+        setTimeout(() => this.attachRemoteStream(this.remoteStream), 150);
+        setTimeout(() => this.attachStreamsToVideos(), 400);
+    }
+
+    syncRemoteTracksFromPeer() {
+        if (!this.peerConnection) return;
+
+        const receivers = this.peerConnection.getReceivers?.() || [];
+        const tracks = receivers.map((r) => r.track).filter((t) => t && t.readyState !== 'ended');
+        if (!tracks.length) return;
+
+        const prevIds = (this.remoteStream?.getTracks() || []).map((t) => t.id).sort().join(',');
+        const nextIds = tracks.map((t) => t.id).sort().join(',');
+        if (prevIds === nextIds && this.hasLiveVideoTrack(this.remoteStream)) {
+            // Still re-bind video elements — fixes black frames after connect.
+            this.attachRemoteStream(this.remoteStream);
+            return;
+        }
+
+        this.remoteStream = new MediaStream(tracks);
+        if (tracks.some((t) => t.kind === 'video')) {
+            this.isVideo = true;
+            this.remoteVideoOff = false;
+        }
+        this.attachRemoteStream(this.remoteStream);
+    }
+
+    startRemoteTrackSync() {
+        this.stopRemoteTrackSync();
+        this._remoteTrackSyncTimer = setInterval(() => {
+            if (!(this.isCallActive || this.isCalling || this.wasAnswered)) return;
+            this.syncRemoteTracksFromPeer();
+        }, 1000);
+    }
+
+    stopRemoteTrackSync() {
+        if (this._remoteTrackSyncTimer) {
+            clearInterval(this._remoteTrackSyncTimer);
+            this._remoteTrackSyncTimer = null;
+        }
     }
 
     tryIceRestart() {
@@ -1540,8 +1768,23 @@ class WebRTCCallManager {
 
                     const fromId = Number(from_user.id);
                     const sameCall = data.call_id && String(data.call_id) === String(this.callId || '');
-                    const sameCaller = fromId && Number(this.remoteUserId) === fromId;
+                    const sameCaller = fromId && this.sameUserId(this.remoteUserId, fromId);
                     const uiVisible = this.isCallUiVisible();
+
+                    // Already in an active call — never tear it down for a replayed offer.
+                    if (this.isCallActive && this.peerConnection) {
+                        if (sameCaller || sameCall) {
+                            if (data.ice_restart) {
+                                await this.handleIceRestartOffer(data);
+                            } else {
+                                this.syncRemoteTracksFromPeer();
+                                if (!uiVisible) this.forceShowCallUi();
+                            }
+                            return;
+                        }
+                        await this.sendBusyDecline(from_user, data);
+                        return;
+                    }
 
                     // ICE restart offer during active call — renegotiate, don't re-ring.
                     if (data.ice_restart && this.peerConnection && (sameCall || sameCaller)) {
@@ -1550,19 +1793,19 @@ class WebRTCCallManager {
                     }
 
                     // Duplicate delivery of the same offer (Echo + inbox) — ignore.
-                    if (sameCall && (this.isIncoming || this.isCalling || this.isCallActive)) {
+                    if (sameCall && (this.isIncoming || this.isCalling)) {
                         if (!uiVisible) this.forceShowCallUi();
                         return;
                     }
 
                     // Only busy when a REAL call UI is already up with someone else.
-                    if (uiVisible && this.isCallActive && !sameCaller) {
+                    if ((uiVisible || this.isCalling || this.isIncoming) && !sameCaller) {
                         await this.sendBusyDecline(from_user, data);
                         return;
                     }
 
-                    // Stuck flags / missed UI / same caller redial — always show incoming screen.
-                    if (this.isIncoming || this.isCalling || this.isCallActive) {
+                    // Stuck ringing UI / same caller redial — reset only non-active state.
+                    if (this.isIncoming || this.isCalling) {
                         this.softResetForIncoming();
                     }
 
@@ -1572,23 +1815,40 @@ class WebRTCCallManager {
                 }
 
                 case 'answer':
-                    await this.handleAnswer(data);
+                    // Ignore answers when idle or for a different / previous call.
+                    if (!(this.isCalling || this.isCallActive || this.wasAnswered)) return;
+                    if (!this.sameCallId(data)) return;
+                    if (this.remoteUserId && !this.sameUserId(from_user.id, this.remoteUserId)) return;
+                    await this.handleAnswer(data, payload);
                     break;
 
                 case 'candidate':
+                    if (!(this.isCallActive || this.isCalling || this.isIncoming || this.wasAnswered)) return;
+                    if (!this.sameCallId(data)) return;
+                    if (this.remoteUserId && !this.sameUserId(from_user.id, this.remoteUserId)) return;
                     await this.handleRemoteCandidate(data);
                     break;
 
                 case 'media_state':
                     if (!(this.isCallActive || this.isCalling || this.isIncoming)) break;
-                    if (from_user?.id !== this.remoteUserId) break;
+                    if (!this.sameCallId(data)) break;
+                    if (!this.sameUserId(from_user?.id, this.remoteUserId)) break;
                     this.applyRemoteMediaState(data || {});
                     break;
 
                 case 'decline':
                     if (!(this.isCallActive || this.isCalling || this.isIncoming)) break;
+                    if (!this.sameCallId(data)) break;
+                    // Only end if it is from the peer (or our own multi-tab echo).
+                    if (
+                        this.remoteUserId
+                        && !this.sameUserId(from_user?.id, this.remoteUserId)
+                        && !this.sameUserId(from_user?.id, window.authUserId)
+                    ) {
+                        break;
+                    }
                     this.cleanup();
-                    if (from_user?.id !== window.authUserId) {
+                    if (!this.sameUserId(from_user?.id, window.authUserId)) {
                         const reason = data?.reason;
                         if (reason === 'busy') {
                             alert('User is busy on another call.');
@@ -1600,6 +1860,14 @@ class WebRTCCallManager {
 
                 case 'hangup':
                     if (!(this.isCallActive || this.isCalling || this.isIncoming)) break;
+                    if (!this.sameCallId(data)) break;
+                    if (
+                        this.remoteUserId
+                        && !this.sameUserId(from_user?.id, this.remoteUserId)
+                        && !this.sameUserId(from_user?.id, window.authUserId)
+                    ) {
+                        break;
+                    }
                     this.cleanup();
                     break;
             }
@@ -1652,16 +1920,34 @@ class WebRTCCallManager {
         this.iceCandidatesQueue.push(init);
     }
 
-    async handleAnswer(data) {
+    async handleAnswer(data, payload = null) {
         if (!data?.sdp) {
             console.error('Answer missing SDP', data);
             return;
         }
 
         if (!this.peerConnection) {
-            console.warn('Answer received but peerConnection missing');
+            // Answer can arrive before local PC finishes setup — retry shortly.
+            const tries = (this._pendingAnswer?.tries || 0) + 1;
+            this._pendingAnswer = { data, payload, tries };
+            if (tries > 20) {
+                console.warn('Answer received but peerConnection missing');
+                this._pendingAnswer = null;
+                return;
+            }
+            clearTimeout(this._pendingAnswerTimer);
+            this._pendingAnswerTimer = setTimeout(() => {
+                this._pendingAnswerTimer = null;
+                const pending = this._pendingAnswer;
+                if (!pending) return;
+                this.handleAnswer(pending.data, pending.payload);
+            }, 250);
             return;
         }
+
+        this._pendingAnswer = null;
+        clearTimeout(this._pendingAnswerTimer);
+        this._pendingAnswerTimer = null;
 
         try {
             // Ignore duplicate answers.
@@ -1669,6 +1955,7 @@ class WebRTCCallManager {
                 this.wasAnswered = true;
                 this.isCalling = false;
                 await this.flushIceCandidates();
+                this.ensureRemoteAudioPlaying();
                 return;
             }
 
@@ -1681,13 +1968,31 @@ class WebRTCCallManager {
             this.stopIncomingAlert();
             if (this.status) this.status.textContent = 'Connecting...';
             this.updateCallUI();
+            this.syncRemoteTracksFromPeer();
+            this.ensureRemoteAudioPlaying();
             this.sendMediaState();
             this.bumpInboxPolling();
             this.pullInbox();
+            setTimeout(() => this.syncRemoteTracksFromPeer(), 300);
+            setTimeout(() => this.syncRemoteTracksFromPeer(), 1000);
+            setTimeout(() => this.ensureRemoteAudioPlaying(), 400);
         } catch (e) {
             console.error('Failed to apply answer SDP', e);
             if (this.status) this.status.textContent = 'Connection error';
         }
+    }
+
+    ensureRemoteAudioPlaying() {
+        if (!this.remoteAudio) return;
+        if (this.remoteStream && this.remoteAudio.srcObject !== this.remoteStream) {
+            this.bindStreamToVideo(this.remoteAudio, this.remoteStream, { muted: false });
+        }
+        this.remoteAudio.muted = false;
+        const play = () => this.remoteAudio.play().catch(() => {});
+        play();
+        setTimeout(play, 200);
+        setTimeout(play, 800);
+        this.applyAudioOutput();
     }
 
     async handleIceRestartOffer(data) {
@@ -1712,10 +2017,8 @@ class WebRTCCallManager {
         if (this._endingCall) return;
 
         this.stopIncomingAlert();
-        this.acceptBtn?.classList.add('hidden');
-        this.declineBtn?.classList.add('hidden');
-        this.hangupBtn?.classList.remove('hidden');
         if (this.status) this.status.textContent = 'Connecting...';
+        this.setCallPhase('active');
         this.forceShowCallUi();
         this.bumpInboxPolling();
 
@@ -1727,7 +2030,7 @@ class WebRTCCallManager {
             this.localStream = await this.getLocalMedia(this.isVideo);
 
             this.showLocalVideoPreview();
-            this.showMediaControls();
+            this.setCallPhase('active');
             await this.refreshAudioOutputs();
             await this.applyAudioOutput();
 
@@ -1751,12 +2054,14 @@ class WebRTCCallManager {
             this.isCallActive = true;
             this.clearCallTimeouts();
             this.updateCallUI();
+            this.ensureRemoteAudioPlaying();
             this.sendMediaState();
             this.bumpInboxPolling();
             // Pull immediately so caller-side candidates apply without waiting for interval.
             this.pullInbox();
             setTimeout(() => this.pullInbox(), 300);
             setTimeout(() => this.pullInbox(), 800);
+            setTimeout(() => this.ensureRemoteAudioPlaying(), 400);
         } catch (e) {
             console.error('Failed to accept call:', e);
             const message = this.mediaErrorMessage(e);
@@ -1929,12 +2234,16 @@ class WebRTCCallManager {
         this.stopIncomingAlert();
         this.clearCallTimeouts();
         this.clearDisconnectTimer();
+        this.stopRemoteTrackSync();
         this.isIncoming = false;
         this.isCalling = false;
         this.isCallActive = false;
         this.incomingOfferSdp = null;
         this.wasAnswered = false;
         this._endingCall = false;
+        this._pendingAnswer = null;
+        clearTimeout(this._pendingAnswerTimer);
+        this._pendingAnswerTimer = null;
 
         if (this.peerConnection) {
             try {
@@ -2032,19 +2341,13 @@ class WebRTCCallManager {
             this.status.textContent = `Incoming ${this.isVideo ? 'Video' : 'Voice'} Call...`;
         }
 
-        this.declineBtn?.classList.remove('hidden');
-        this.acceptBtn?.classList.remove('hidden');
-        this.hangupBtn?.classList.add('hidden');
-        this.muteBtn?.classList.add('hidden');
-        this.videoBtn?.classList.add('hidden');
-        this.speakerBtn?.classList.add('hidden');
-        this.flipBtn?.classList.add('hidden');
-        this.minimizeBtn?.classList.add('hidden');
         this.videosContainer?.classList.add('hidden');
         this.audioPulse?.classList.add('hidden');
         this.profileBlock?.classList.remove('hidden');
         this.closeSpeakerPicker();
 
+        // ONLY Accept (green) + Decline/Cut (red) — no media controls yet
+        this.setCallPhase('incoming');
         this.forceShowCallUi();
         this.startIncomingAlert();
 
@@ -2053,9 +2356,14 @@ class WebRTCCallManager {
         } catch (e) {}
 
         // Re-assert UI after paint (mobile Safari / live CSS race)
-        requestAnimationFrame(() => this.forceShowCallUi());
-        setTimeout(() => this.forceShowCallUi(), 50);
-        setTimeout(() => this.forceShowCallUi(), 300);
+        const assertIncoming = () => {
+            this.forceShowCallUi();
+            this.setCallPhase('incoming');
+        };
+        requestAnimationFrame(assertIncoming);
+        setTimeout(assertIncoming, 50);
+        setTimeout(assertIncoming, 300);
+        setTimeout(assertIncoming, 800);
     }
 
     showOverlay() {
@@ -2070,18 +2378,15 @@ class WebRTCCallManager {
     }
 
     updateCallUI() {
-        this.declineBtn?.classList.add('hidden');
-        this.acceptBtn?.classList.add('hidden');
-        this.hangupBtn?.classList.remove('hidden');
-        this.showMediaControls();
+        this.setCallPhase(this.isCalling && !this.wasAnswered ? 'outgoing' : 'active');
+        this.forceShowCallUi();
 
         if (this.isVideo) {
-            this.videosContainer?.classList.remove('hidden');
-            this.audioPulse?.classList.add('hidden');
-            this.profileBlock?.classList.add('hidden');
+            this.showVideoStage();
             this.attachStreamsToVideos();
         } else {
             this.videosContainer?.classList.add('hidden');
+            if (this.videosContainer) this.videosContainer.style.display = 'none';
             this.audioPulse?.classList.remove('hidden');
             this.profileBlock?.classList.remove('hidden');
         }
@@ -2117,6 +2422,7 @@ class WebRTCCallManager {
         this.stopIncomingAlert();
         this.clearCallTimeouts();
         this.clearDisconnectTimer();
+        this.stopRemoteTrackSync();
         this.unbindAudioDeviceWatcher();
         this.closeSpeakerPicker();
         this.isIncoming = false;
@@ -2162,14 +2468,7 @@ class WebRTCCallManager {
         document.body.style.overflow = '';
         document.body.classList.remove('call-ui-open', 'call-minimized-open');
 
-        this.declineBtn?.classList.add('hidden');
-        this.acceptBtn?.classList.add('hidden');
-        this.muteBtn?.classList.add('hidden');
-        this.videoBtn?.classList.add('hidden');
-        this.speakerBtn?.classList.add('hidden');
-        this.flipBtn?.classList.add('hidden');
-        this.hangupBtn?.classList.add('hidden');
-        this.minimizeBtn?.classList.add('hidden');
+        this.setCallPhase('none');
         this.videosContainer?.classList.add('hidden');
         this.audioPulse?.classList.add('hidden');
         this.profileBlock?.classList.remove('hidden');
@@ -2187,6 +2486,9 @@ class WebRTCCallManager {
         }
 
         this.iceCandidatesQueue = [];
+        this._pendingAnswer = null;
+        clearTimeout(this._pendingAnswerTimer);
+        this._pendingAnswerTimer = null;
         this.remoteUserId = null;
     }
 }

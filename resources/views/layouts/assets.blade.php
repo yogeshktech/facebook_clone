@@ -516,14 +516,25 @@
 {!! file_get_contents(resource_path('js/calls.js')) !!}
 (function () {
     function bootCalls() {
-        if (!window.CallManager) return;
+        if (!window.CallManager || !window.authUserId) return;
         window.CallManager.init();
+        // Ensure inbox polling is alive on every page (Home, Feed, Chat, …)
+        window.CallManager.startInboxPolling?.();
+        window.CallManager.registerSignalingListener?.();
     }
     if (document.readyState === 'loading') {
         document.addEventListener('DOMContentLoaded', bootCalls);
     } else {
         bootCalls();
     }
+    // Back/forward cache & tab focus — keep receiving calls on Home
+    window.addEventListener('pageshow', bootCalls);
+    document.addEventListener('visibilitychange', function () {
+        if (document.visibilityState === 'visible') {
+            bootCalls();
+            window.CallManager?.pullInbox?.();
+        }
+    });
 })();
 </script>
 @endauth
