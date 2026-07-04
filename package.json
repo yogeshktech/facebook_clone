@@ -6,7 +6,8 @@
         "resources/js/**/*.js"
     ],
     "scripts": {
-        "build": "vite build",
+        "build": "vite build && node scripts/publish-call-assets.mjs",
+        "publish:calls": "node scripts/publish-call-assets.mjs",
         "dev": "vite"
     },
     "devDependencies": {

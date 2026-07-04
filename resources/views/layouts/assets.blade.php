@@ -517,27 +517,53 @@
 @endif
 
 @auth
-{{-- Always load latest calls.js from disk so live works without waiting on vite rebuild --}}
+{{-- calls.js from /public/js (live-safe static file, cache-busted by mtime) --}}
+@php
+    $callsJsPublic = public_path('js/calls.js');
+    $callsJsSource = resource_path('js/calls.js');
+    // Prefer public copy; fall back to resources and auto-publish once.
+    if (! file_exists($callsJsPublic) && file_exists($callsJsSource)) {
+        @mkdir(dirname($callsJsPublic), 0755, true);
+        @copy($callsJsSource, $callsJsPublic);
+    }
+    $callsJsV = file_exists($callsJsPublic) ? filemtime($callsJsPublic) : time();
+@endphp
+<script src="{{ asset('js/calls.js') }}?v={{ $callsJsV }}" defer></script>
 <script>
-{!! file_get_contents(resource_path('js/calls.js')) !!}
 (function () {
     function bootCalls() {
         if (!window.CallManager || !window.authUserId) return;
         window.CallManager.init();
-        // Ensure inbox polling is alive on every page (Home, Feed, Chat, …)
         window.CallManager.startInboxPolling?.();
         window.CallManager.registerSignalingListener?.();
     }
-    if (document.readyState === 'loading') {
-        document.addEventListener('DOMContentLoaded', bootCalls);
-    } else {
-        bootCalls();
+    function whenReady(fn) {
+        if (window.CallManager) {
+            fn();
+            return;
+        }
+        // Wait for deferred public/js/calls.js
+        var tries = 0;
+        var t = setInterval(function () {
+            tries += 1;
+            if (window.CallManager || tries > 40) {
+                clearInterval(t);
+                fn();
+            }
+        }, 50);
     }
-    // Back/forward cache & tab focus — keep receiving calls on Home
-    window.addEventListener('pageshow', bootCalls);
+    function start() {
+        whenReady(bootCalls);
+    }
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', start);
+    } else {
+        start();
+    }
+    window.addEventListener('pageshow', start);
     document.addEventListener('visibilitychange', function () {
         if (document.visibilityState === 'visible') {
-            bootCalls();
+            start();
             window.CallManager?.pullInbox?.();
         }
     });
