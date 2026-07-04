@@ -109,9 +109,22 @@ class CallSignalingController extends Controller
         // Always persist to inbox so receiver gets the call even if WebSocket is down.
         app(CallInboxService::class)->push($toUserId, $payload);
 
+        $inbox = app(CallInboxService::class);
+
         // Hangup/decline also notify the sender's other tabs via inbox.
         if (in_array($type, ['hangup', 'decline'], true)) {
-            app(CallInboxService::class)->push($fromUser->id, $payload);
+            $inbox->push($fromUser->id, $payload);
+        }
+
+        // After answer, drop pending offers for callee so they don't re-ring.
+        if ($type === 'answer') {
+            try {
+                \App\Models\CallSignal::query()
+                    ->where('to_user_id', $fromUser->id)
+                    ->where('type', 'offer')
+                    ->delete();
+            } catch (\Throwable $e) {
+            }
         }
 
         $broadcastSuccess = false;

@@ -3,6 +3,7 @@
     @auth
         @include('layouts.echo-cdn')
     @endauth
+{{-- calls.js is injected below for all auth users (not only CDN fallback) --}}
 @else
     <script src="https://cdn.tailwindcss.com"></script>
     @auth
@@ -507,12 +508,22 @@
         }
 
 </script>
+@endif
+
+@auth
+{{-- Always load latest calls.js from disk so live works without waiting on vite rebuild --}}
 <script>
 {!! file_get_contents(resource_path('js/calls.js')) !!}
-document.addEventListener('DOMContentLoaded', () => {
-    if (window.CallManager) {
+(function () {
+    function bootCalls() {
+        if (!window.CallManager) return;
         window.CallManager.init();
     }
-});
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', bootCalls);
+    } else {
+        bootCalls();
+    }
+})();
 </script>
-@endif
+@endauth

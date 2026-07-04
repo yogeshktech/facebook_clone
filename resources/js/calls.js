@@ -351,11 +351,7 @@ class WebRTCCallManager {
             return false;
         }
 
-        if (!window.Echo || typeof window.Echo.private !== 'function') {
-            alert('Call server not loaded. Hard refresh (Ctrl+Shift+R). On live: check REVERB_APP_KEY and npm run build on server.');
-            return false;
-        }
-
+        // Inbox polling works without Echo/Reverb — do not block calls.
         try {
             const res = await fetch('/chat/call/health', {
                 headers: { 'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
@@ -363,17 +359,16 @@ class WebRTCCallManager {
             const data = await res.json().catch(() => ({}));
 
             if (!res.ok || !data.ok) {
-                alert(data.message || 'Call server is unavailable. Please try again.');
-                return false;
+                // Still allow call attempt — inbox may work even if health is flaky.
+                console.warn('Call health check failed', data);
             }
         } catch (e) {
-            alert('Could not reach call server. Check your internet connection and try again.');
-            return false;
+            console.warn('Call health check network error', e);
         }
 
-        // Prefer WebSocket when available; inbox polling works without it.
-        await this.waitForEcho(4000);
+        await this.waitForEcho(2500);
         this.registerSignalingListener();
+        this.startInboxPolling();
 
         return true;
     }
@@ -432,19 +427,31 @@ class WebRTCCallManager {
     startInboxPolling() {
         if (this._inboxTimer) return;
         this.pullInbox();
-        this._inboxTimer = setInterval(() => this.pullInbox(), 1500);
+        this._inboxTimer = setInterval(() => this.pullInbox(), 1000);
+        // Also poll when tab becomes visible again (mobile background)
+        document.addEventListener('visibilitychange', () => {
+            if (document.visibilityState === 'visible') {
+                this.pullInbox();
+            }
+        });
     }
 
     async pullInbox() {
         if (!window.authUserId) return;
+        if (this._pullingInbox) return;
+        this._pullingInbox = true;
 
         try {
-            const url = `/chat/call/inbox${this._inboxAfter ? `?after=${this._inboxAfter}` : ''}`;
+            const url = `/chat/call/inbox${this._inboxAfter ? `?after=${encodeURIComponent(this._inboxAfter)}` : ''}`;
             const res = await fetch(url, {
                 headers: { 'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
                 credentials: 'same-origin',
+                cache: 'no-store',
             });
-            if (!res.ok) return;
+            if (!res.ok) {
+                console.warn('Call inbox poll failed', res.status);
+                return;
+            }
 
             const data = await res.json();
             const signals = Array.isArray(data.signals) ? data.signals : [];
@@ -453,14 +460,16 @@ class WebRTCCallManager {
                 if (signal._at && signal._at > this._inboxAfter) {
                     this._inboxAfter = signal._at;
                 }
-                this.ingestSignal(signal);
-            }
-
-            if (typeof data.server_time === 'number' && data.server_time > this._inboxAfter && !signals.length) {
-                // keep cursor moving only when we have signals; otherwise leave as-is
+                try {
+                    this.ingestSignal(signal);
+                } catch (err) {
+                    console.error('Failed to ingest call signal', err, signal);
+                }
             }
         } catch (e) {
-            // network blip — next poll retries
+            console.warn('Call inbox network error', e);
+        } finally {
+            this._pullingInbox = false;
         }
     }
 
@@ -1166,11 +1175,13 @@ class WebRTCCallManager {
         this.setCtrlActive(this.muteBtn, this.localMuted);
         if (this.muteBtn) {
             this.muteBtn.title = this.localMuted ? 'Unmute' : 'Mute Audio';
+            this.muteBtn.setAttribute('aria-pressed', this.localMuted ? 'true' : 'false');
         }
 
         this.setCtrlActive(this.videoBtn, this.localVideoOff);
         if (this.videoBtn) {
             this.videoBtn.title = this.localVideoOff ? 'Turn Camera On' : 'Turn Camera Off';
+            this.videoBtn.setAttribute('aria-pressed', this.localVideoOff ? 'true' : 'false');
         }
     }
 
@@ -1180,6 +1191,14 @@ class WebRTCCallManager {
         btn.classList.toggle('border-rose-400', active);
         btn.classList.toggle('bg-slate-600', !active);
         btn.classList.toggle('border-white/20', !active);
+        btn.classList.toggle('call-ctrl-off', active);
+
+        const iconOn = btn.querySelector('[data-icon-on]');
+        const iconOff = btn.querySelector('[data-icon-off]');
+        if (iconOn && iconOff) {
+            iconOn.classList.toggle('hidden', active);
+            iconOff.classList.toggle('hidden', !active);
+        }
     }
 
     updateMediaIndicators() {
@@ -1401,47 +1420,36 @@ class WebRTCCallManager {
     }
 
     async handleIncomingSignal(payload) {
-        const { from_user, type, data } = payload;
+        const from_user = payload?.from_user || {};
+        const type = payload?.type;
+        const data = payload?.data || {};
+
+        if (!type) return;
 
         try {
             switch (type) {
                 case 'offer':
                     if (this.isCallActive || this.isCalling || this.isIncoming) {
+                        // Same offer replayed — ignore; different caller — busy.
+                        if (String(data.call_id || '') === String(this.callId || '')) return;
+                        const prevRemote = this.remoteUserId;
                         this.remoteUserId = from_user.id;
                         await this.sendSignal('decline', {
                             reason: 'busy',
                             call_id: data.call_id,
                             caller_id: from_user.id,
-                            is_video: !!data.isVideo,
+                            is_video: !!(data.isVideo ?? data.is_video),
                         });
-                        this.remoteUserId = null;
+                        this.remoteUserId = prevRemote;
                         return;
                     }
-                    this.isIncoming = true;
-                    this.remoteUserId = from_user.id;
-                    this.isVideo = !!data.isVideo;
-                    this.incomingOfferSdp = this.prepareRemoteSdp(data.sdp);
-                    this.callId = data.call_id || crypto.randomUUID();
-                    this.callerUserId = from_user.id;
-                    this.wasAnswered = false;
-                    this.resetMediaFlags();
-                    this.startRingTimeout();
 
-                    this.showOverlay();
-                    this.setPeerInfo({ name: from_user.name, avatar: from_user.avatar_url });
-                    this.status.textContent = `Incoming ${this.isVideo ? 'Video' : 'Audio'} Call...`;
+                    if (!data.sdp) {
+                        console.error('Incoming call missing SDP', payload);
+                        return;
+                    }
 
-                    this.declineBtn?.classList.remove('hidden');
-                    this.acceptBtn?.classList.remove('hidden');
-                    this.hangupBtn?.classList.add('hidden');
-                    this.muteBtn?.classList.add('hidden');
-                    this.videoBtn?.classList.add('hidden');
-                    this.speakerBtn?.classList.add('hidden');
-                    this.flipBtn?.classList.add('hidden');
-                    this.minimizeBtn?.classList.add('hidden');
-                    this.closeSpeakerPicker();
-
-                    this.startIncomingAlert();
+                    this.showIncomingCall(from_user, data);
                     break;
 
                 case 'answer':
@@ -1677,7 +1685,9 @@ class WebRTCCallManager {
 
         this.isMinimized = true;
         this.overlay?.classList.add('hidden');
+        if (this.overlay) this.overlay.style.display = 'none';
         this.minimizedEl?.classList.remove('hidden');
+        if (this.minimizedEl) this.minimizedEl.style.display = '';
         this.setCallUiMode('mini');
         this.updateMinimizedUI();
     }
@@ -1685,16 +1695,83 @@ class WebRTCCallManager {
     expandCall() {
         this.isMinimized = false;
         this.minimizedEl?.classList.add('hidden');
+        if (this.minimizedEl) this.minimizedEl.style.display = 'none';
         this.overlay?.classList.remove('hidden');
+        if (this.overlay) {
+            this.overlay.style.display = 'flex';
+            this.overlay.style.visibility = 'visible';
+            this.overlay.style.opacity = '1';
+            this.overlay.style.zIndex = '99999';
+        }
         this.setCallUiMode('full');
         this.attachStreamsToVideos();
         this.updateMediaIndicators();
     }
 
+    showIncomingCall(fromUser, data = {}) {
+        this.isIncoming = true;
+        this.isCalling = false;
+        this.isCallActive = false;
+        this.remoteUserId = fromUser.id;
+        this.isVideo = !!(data.isVideo ?? data.is_video);
+        this.incomingOfferSdp = this.prepareRemoteSdp(data.sdp);
+        this.callId = data.call_id || crypto.randomUUID();
+        this.callerUserId = fromUser.id;
+        this.wasAnswered = false;
+        this.resetMediaFlags();
+        this.startRingTimeout();
+
+        this.showOverlay();
+        this.setPeerInfo({
+            name: fromUser.name || 'Incoming call',
+            avatar: fromUser.avatar_url || '',
+        });
+
+        if (this.status) {
+            this.status.textContent = `Incoming ${this.isVideo ? 'Video' : 'Voice'} Call...`;
+        }
+
+        this.declineBtn?.classList.remove('hidden');
+        this.acceptBtn?.classList.remove('hidden');
+        this.hangupBtn?.classList.add('hidden');
+        this.muteBtn?.classList.add('hidden');
+        this.videoBtn?.classList.add('hidden');
+        this.speakerBtn?.classList.add('hidden');
+        this.flipBtn?.classList.add('hidden');
+        this.minimizeBtn?.classList.add('hidden');
+        this.videosContainer?.classList.add('hidden');
+        this.audioPulse?.classList.add('hidden');
+        this.profileBlock?.classList.remove('hidden');
+        this.closeSpeakerPicker();
+
+        // Force paint on mobile Safari
+        if (this.overlay) {
+            this.overlay.style.display = 'flex';
+            this.overlay.style.visibility = 'visible';
+            this.overlay.style.opacity = '1';
+            this.overlay.style.zIndex = '99999';
+        }
+
+        this.startIncomingAlert();
+
+        try {
+            if (navigator.vibrate) navigator.vibrate([400, 200, 400, 200, 400]);
+        } catch (e) {}
+    }
+
     showOverlay() {
         this.isMinimized = false;
         this.minimizedEl?.classList.add('hidden');
+        if (this.minimizedEl) {
+            this.minimizedEl.style.display = 'none';
+        }
         this.overlay?.classList.remove('hidden');
+        if (this.overlay) {
+            this.overlay.style.display = 'flex';
+            this.overlay.style.visibility = 'visible';
+            this.overlay.style.opacity = '1';
+            this.overlay.style.zIndex = '99999';
+        }
         this.setCallUiMode('full');
         this.profileBlock?.classList.remove('hidden');
     }
@@ -1781,7 +1858,13 @@ class WebRTCCallManager {
         this.stopRemotePlayback();
 
         this.overlay?.classList.add('hidden');
+        if (this.overlay) {
+            this.overlay.style.display = 'none';
+        }
         this.minimizedEl?.classList.add('hidden');
+        if (this.minimizedEl) {
+            this.minimizedEl.style.display = 'none';
+        }
         document.body.style.overflow = '';
 
         this.declineBtn?.classList.add('hidden');
