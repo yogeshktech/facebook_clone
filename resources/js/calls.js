@@ -1520,31 +1520,38 @@ class WebRTCCallManager {
         }
     }
 
-    createPeerConnection() {
+    addLocalTracks() {
+        if (!this.peerConnection || !this.localStream) return;
+
+        const audioTrack = this.localStream.getAudioTracks()[0];
+        const videoTrack = this.localStream.getVideoTracks()[0];
+
+        if (audioTrack) {
+            const alreadyAdded = this.peerConnection.getSenders().some(s => s.track === audioTrack);
+            if (!alreadyAdded) {
+                this.peerConnection.addTrack(audioTrack, this.localStream);
+            }
+        }
+
+        if (this.isVideo && videoTrack) {
+            videoTrack.enabled = true;
+            const alreadyAdded = this.peerConnection.getSenders().some(s => s.track === videoTrack);
+            if (!alreadyAdded) {
+                this.peerConnection.addTrack(videoTrack, this.localStream);
+            }
+        }
+    }
+
+    createPeerConnection(addTracks = true) {
         this.peerConnection = new RTCPeerConnection({
             iceServers: this.getIceServers(),
             iceCandidatePoolSize: 4,
         });
 
-        // Explicit sendrecv transceivers so both sides always negotiate camera+mic.
-        if (this.localStream) {
-            const audioTrack = this.localStream.getAudioTracks()[0];
-            const videoTrack = this.localStream.getVideoTracks()[0];
-
-            if (audioTrack) {
-                this.peerConnection.addTrack(audioTrack, this.localStream);
-            } else {
-                this.peerConnection.addTransceiver('audio', { direction: 'recvonly' });
-            }
-
-            if (this.isVideo) {
-                if (videoTrack) {
-                    videoTrack.enabled = true;
-                    this.peerConnection.addTrack(videoTrack, this.localStream);
-                } else {
-                    this.peerConnection.addTransceiver('video', { direction: 'recvonly' });
-                }
-            }
+        if (addTracks && this.localStream) {
+            this.addLocalTracks();
+        } else if (!addTracks) {
+            // No tracks added yet - will be added using addLocalTracks after setRemoteDescription
         } else {
             this.peerConnection.addTransceiver('audio', { direction: 'recvonly' });
             if (this.isVideo) {
@@ -2034,10 +2041,12 @@ class WebRTCCallManager {
             await this.refreshAudioOutputs();
             await this.applyAudioOutput();
 
-            this.createPeerConnection();
+            this.createPeerConnection(false);
 
             await this.setRemoteSdp('offer', this.incomingOfferSdp);
             await this.flushIceCandidates();
+
+            this.addLocalTracks();
 
             const answer = await this.peerConnection.createAnswer();
             await this.peerConnection.setLocalDescription(answer);

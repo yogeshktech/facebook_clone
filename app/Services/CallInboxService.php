@@ -65,28 +65,21 @@ class CallInboxService
     public function pull(int $userId, ?float $after = null): array
     {
         $fromDb = [];
+        $minTime = ($after !== null && $after > 0) ? $after : (microtime(true) - self::TTL_SECONDS);
 
         try {
-            $query = CallSignal::query()
+            // Fetch last 2 hours to be immune to timezone offsets (e.g. UTC vs local time)
+            $rows = CallSignal::query()
                 ->where('to_user_id', $userId)
-                ->where('created_at', '>=', now()->subSeconds(self::TTL_SECONDS))
-                ->orderBy('created_at');
+                ->where('created_at', '>=', now()->subHours(2))
+                ->orderBy('created_at')
+                ->get();
 
-            if ($after !== null && $after > 0) {
-                // _at is microtime float stored in payload
-                $rows = $query->get();
-                $fromDb = $rows
-                    ->map(fn (CallSignal $row) => $row->payload)
-                    ->filter(fn ($payload) => is_array($payload) && (float) ($payload['_at'] ?? 0) > $after)
-                    ->values()
-                    ->all();
-            } else {
-                $fromDb = $query->get()
-                    ->map(fn (CallSignal $row) => $row->payload)
-                    ->filter(fn ($payload) => is_array($payload))
-                    ->values()
-                    ->all();
-            }
+            $fromDb = $rows
+                ->map(fn (CallSignal $row) => $row->payload)
+                ->filter(fn ($payload) => is_array($payload) && (float) ($payload['_at'] ?? 0) > $minTime)
+                ->values()
+                ->all();
         } catch (\Throwable $e) {
             logger()->warning('CallSignal DB read failed: '.$e->getMessage());
         }
@@ -98,12 +91,10 @@ class CallInboxService
         // Fallback to cache
         try {
             $inbox = Cache::get($this->cacheKey($userId), []);
-            if ($after !== null && $after > 0) {
-                $inbox = array_values(array_filter(
-                    $inbox,
-                    static fn (array $item) => (float) ($item['_at'] ?? 0) > $after
-                ));
-            }
+            $inbox = array_values(array_filter(
+                $inbox,
+                static fn (array $item) => (float) ($item['_at'] ?? 0) > $minTime
+            ));
 
             return $inbox;
         } catch (\Throwable $e) {

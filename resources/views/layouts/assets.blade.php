@@ -105,10 +105,17 @@
                         osc.start(start);
                         osc.stop(start + duration);
                     };
-                    const now = ctx.currentTime;
-                    playTone(880, now, 0.15);
-                    playTone(1175, now + 0.18, 0.2);
-                    if (navigator.vibrate) navigator.vibrate([120, 60, 120]);
+                    const run = () => {
+                        const now = ctx.currentTime;
+                        playTone(880, now, 0.15);
+                        playTone(1175, now + 0.18, 0.2);
+                        if (navigator.vibrate) navigator.vibrate([120, 60, 120]);
+                    };
+                    if (ctx.state === 'suspended') {
+                        ctx.resume().then(run).catch(run);
+                    } else {
+                        run();
+                    }
                 } catch (e) {}
             };
             const showSystemNotification = async (title, body, url) => {
@@ -154,8 +161,7 @@
                         const latest = fresh[0];
                         notifiedIds.add(latest.id);
                         saveNotified(notifiedIds);
-                        const title = latest.title || latest.message || 'NEWBOOK';
-                        toastEl.innerHTML = '<p class="font-semibold text-sm">' + title + '</p><p class="text-xs text-gray-500">' + (latest.created_at_human || 'Just now') + '</p>';
+                        toastEl.innerHTML = '<div class="flex flex-col text-slate-900"><p class="font-semibold text-sm text-slate-900">' + title + '</p><p class="text-xs text-gray-500 mt-0.5">' + (latest.created_at_human || 'Just now') + '</p></div>';
                         toastEl.classList.remove('hidden');
                         setTimeout(() => toastEl.classList.add('hidden'), 5000);
                         playNotificationSound();

@@ -65,12 +65,20 @@ export function playNotificationSound() {
             osc.stop(start + duration);
         };
 
-        const now = ctx.currentTime;
-        playTone(880, now, 0.15);
-        playTone(1175, now + 0.18, 0.2);
+        const run = () => {
+            const now = ctx.currentTime;
+            playTone(880, now, 0.15);
+            playTone(1175, now + 0.18, 0.2);
 
-        if (navigator.vibrate) {
-            navigator.vibrate([120, 60, 120]);
+            if (navigator.vibrate) {
+                navigator.vibrate([120, 60, 120]);
+            }
+        };
+
+        if (ctx.state === 'suspended') {
+            ctx.resume().then(run).catch(run);
+        } else {
+            run();
         }
     } catch {
         // ignore if audio blocked
@@ -143,11 +151,11 @@ export function showNotificationToast(notification) {
         : '';
 
     toastEl.innerHTML = `
-        <div class="flex gap-3 items-start">
+        <div class="flex gap-3 items-start text-slate-900">
             ${avatar}
-            <div>
-                <p class="font-semibold text-sm">${notification.title || notification.message}</p>
-                <p class="text-xs text-gray-500">${notification.created_at_human || 'Just now'}</p>
+            <div class="min-w-0 flex-1">
+                <p class="font-semibold text-sm text-slate-900">${notification.title || notification.message}</p>
+                <p class="text-xs text-gray-500 mt-0.5">${notification.created_at_human || 'Just now'}</p>
             </div>
         </div>`;
     toastEl.classList.remove('hidden');
