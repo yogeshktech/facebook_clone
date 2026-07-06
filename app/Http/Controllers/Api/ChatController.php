@@ -109,4 +109,56 @@ class ChatController extends Controller
 
         return response()->json($message->load('user'), 201);
     }
+
+    public function createGroup(Request $request): JsonResponse
+    {
+        $validated = $request->validate([
+            'name' => ['required', 'string', 'max:80'],
+            'user_ids' => ['required', 'array', 'min:1'],
+            'user_ids.*' => ['integer', 'exists:users,id'],
+        ]);
+
+        $friendIds = $this->getFriendIds($request->user());
+        $memberIds = collect($validated['user_ids'])
+            ->map(fn ($id) => (int) $id)
+            ->filter(fn ($id) => $id !== auth()->id() && in_array($id, $friendIds, true))
+            ->unique()
+            ->values();
+
+        if ($memberIds->isEmpty()) {
+            return response()->json(['message' => 'Select at least one friend'], 422);
+        }
+
+        $conversation = Conversation::create([
+            'name' => $validated['name'],
+            'is_group' => true,
+        ]);
+
+        $attach = [auth()->id() => ['role' => 'admin']];
+        foreach ($memberIds as $id) {
+            $attach[$id] = ['role' => 'member'];
+        }
+        $conversation->users()->attach($attach);
+
+        return response()->json($conversation->load('users'), 201);
+    }
+
+    public function destroy(Conversation $conversation): JsonResponse
+    {
+        abort_unless($conversation->users()->where('user_id', auth()->id())->exists(), 403);
+
+        $conversation->users()->updateExistingPivot(auth()->id(), [
+            'hidden_at' => now(),
+        ]);
+
+        return response()->json(['message' => 'Chat deleted']);
+    }
+
+    private function getFriendIds(User $user): array
+    {
+        $sent = $user->sentFriendRequests()->where('status', 'accepted')->pluck('friend_id');
+        $received = $user->receivedFriendRequests()->where('status', 'accepted')->pluck('user_id');
+
+        return $sent->merge($received)->unique()->toArray();
+    }
 }

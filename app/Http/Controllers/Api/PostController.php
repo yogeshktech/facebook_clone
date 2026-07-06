@@ -3,8 +3,11 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Events\MessageSent;
 use App\Models\Comment;
+use App\Models\Conversation;
 use App\Models\Like;
+use App\Models\Message;
 use App\Models\Post;
 use App\Models\User;
 use App\Services\NotificationService;
@@ -164,7 +167,51 @@ class PostController extends Controller
 
         $post->increment('shares_count');
 
+        if ($post->user_id !== auth()->id()) {
+            NotificationService::postInteraction($post->user, auth()->user(), $post, 'share');
+        }
+
         return response()->json($shared->load('sharedPost'), 201);
+    }
+
+    public function likers(Post $post): JsonResponse
+    {
+        $likers = $post->likes()
+            ->with('user')
+            ->latest()
+            ->get()
+            ->map(fn (Like $like) => [
+                'id' => $like->user->id,
+                'name' => $like->user->name,
+                'avatar_url' => $like->user->avatar_url,
+            ]);
+
+        return response()->json(['likers' => $likers]);
+    }
+
+    public function sendToFriend(Post $post, User $user): JsonResponse
+    {
+        abort_unless(auth()->user()->isFriendsWith($user), 403);
+
+        $conversation = Conversation::findBetweenUsers(auth()->id(), $user->id);
+
+        if (! $conversation) {
+            $conversation = Conversation::create(['is_group' => false]);
+            $conversation->users()->attach([auth()->id(), $user->id]);
+        }
+
+        $message = Message::create([
+            'conversation_id' => $conversation->id,
+            'user_id' => auth()->id(),
+            'body' => auth()->user()->name.' shared a post with you (#'.$post->id.')',
+        ]);
+
+        $conversation->touch();
+        broadcast(new MessageSent($message))->toOthers();
+        NotificationService::chatMessage($conversation, auth()->user(), $message);
+        $post->increment('shares_count');
+
+        return response()->json(['message' => 'Post sent', 'conversation_id' => $conversation->id]);
     }
 
     private function getFriendIds(User $user): array

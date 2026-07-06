@@ -22,6 +22,10 @@ class FriendController extends Controller
                 ->where('friend_id', $user->id)
                 ->where('status', 'pending')
                 ->get(),
+            'sent' => Friendship::with('friend')
+                ->where('user_id', $user->id)
+                ->where('status', 'pending')
+                ->get(),
         ]);
     }
 
@@ -55,6 +59,29 @@ class FriendController extends Controller
         $friendship->update(['status' => 'rejected']);
 
         return response()->json($friendship);
+    }
+
+    public function cancel(Friendship $friendship): JsonResponse
+    {
+        abort_unless(
+            $friendship->user_id === auth()->id() && $friendship->status === 'pending',
+            403
+        );
+
+        $friendship->delete();
+
+        return response()->json(['message' => 'Request cancelled']);
+    }
+
+    public function unfriend(User $user): JsonResponse
+    {
+        Friendship::where(function ($q) use ($user) {
+            $q->where('user_id', auth()->id())->where('friend_id', $user->id);
+        })->orWhere(function ($q) use ($user) {
+            $q->where('user_id', $user->id)->where('friend_id', auth()->id());
+        })->delete();
+
+        return response()->json(['message' => 'Friend removed']);
     }
 
     private function getFriendIds(User $user): array
