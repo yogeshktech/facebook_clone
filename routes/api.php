@@ -29,11 +29,7 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::get('/feed', [PostController::class, 'index']);
     Route::apiResource('posts', PostController::class)
         ->only(['store', 'show', 'destroy'])
-        ->names([
-            'store' => 'api.posts.store',
-            'show' => 'api.posts.show',
-            'destroy' => 'api.posts.destroy',
-        ]);
+        ->names(['store' => 'api.posts.store','show' => 'api.posts.show','destroy' => 'api.posts.destroy',]);
     Route::post('/posts/{post}/like', [PostController::class, 'like']);
     Route::get('/posts/{post}/likers', [PostController::class, 'likers']);
     Route::post('/posts/{post}/comment', [PostController::class, 'comment']);
