@@ -1,4 +1,5 @@
 import './echo';
+import { ensureServiceWorkerRegistration } from './firebase';
 
 const csrfToken = () => document.querySelector('meta[name="csrf-token"]')?.content;
 
@@ -103,8 +104,8 @@ export async function showSystemNotification({ title, body, url, tag }) {
     };
 
     try {
-        if ('serviceWorker' in navigator) {
-            const registration = await navigator.serviceWorker.ready;
+        const registration = await ensureServiceWorkerRegistration();
+        if (registration) {
             await registration.showNotification(title, options);
             return;
         }

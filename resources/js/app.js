@@ -166,13 +166,22 @@ function initFormDedup() {
 
 async function registerServiceWorker() {
     if (!('serviceWorker' in navigator)) return null;
-    try {
-        const existing = await navigator.serviceWorker.getRegistration('/');
-        return existing || await navigator.serviceWorker.register('/sw.js', { scope: '/' });
-    } catch (e) {
-        console.warn('SW registration failed:', e);
-        return null;
+
+    const candidates = ['/firebase-messaging-sw.js', '/sw.js'];
+
+    for (const swPath of candidates) {
+        try {
+            const existing = await navigator.serviceWorker.getRegistration(swPath);
+            const registration = existing || await navigator.serviceWorker.register(swPath, { scope: '/' });
+            await navigator.serviceWorker.ready;
+            await registration.update().catch(() => {});
+            return registration;
+        } catch (e) {
+            console.warn(`SW registration failed for ${swPath}:`, e);
+        }
     }
+
+    return null;
 }
 
 function initPwa() {

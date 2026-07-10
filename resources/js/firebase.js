@@ -31,6 +31,39 @@ export async function initFirebase() {
     return { app, messaging, vapidKey: config.vapidKey };
 }
 
+async function registerServiceWorkerForPush() {
+    if (!('serviceWorker' in navigator)) {
+        return null;
+    }
+
+    const candidates = ['/firebase-messaging-sw.js', '/sw.js'];
+
+    for (const swPath of candidates) {
+        try {
+            const existing = await navigator.serviceWorker.getRegistration(swPath);
+            const registration = existing || await navigator.serviceWorker.register(swPath, { scope: '/' });
+            await navigator.serviceWorker.ready;
+            await registration.update().catch(() => {});
+            return registration;
+        } catch (error) {
+            console.warn(`Push service worker registration failed for ${swPath}:`, error);
+        }
+    }
+
+    try {
+        const registration = await navigator.serviceWorker.getRegistration('/') || await navigator.serviceWorker.register('/sw.js', { scope: '/' });
+        await navigator.serviceWorker.ready;
+        return registration;
+    } catch (error) {
+        console.warn('Push service worker registration failed:', error);
+        return null;
+    }
+}
+
+export async function ensureServiceWorkerRegistration() {
+    return registerServiceWorkerForPush();
+}
+
 export async function registerFirebaseMessaging(messaging, vapidKey) {
     if (!messaging || !vapidKey) {
         return null;
@@ -41,18 +74,15 @@ export async function registerFirebaseMessaging(messaging, vapidKey) {
         return null;
     }
 
-    if ('serviceWorker' in navigator) {
-        const swPath = window.firebaseConfig?.apiKey ? '/sw.js' : '/sw.js';
-        const existing = await navigator.serviceWorker.getRegistration('/');
-        const registration = existing || await navigator.serviceWorker.register(swPath, { scope: '/' });
-        await navigator.serviceWorker.ready;
-        return getToken(messaging, {
-            vapidKey,
-            serviceWorkerRegistration: registration,
-        });
+    const registration = await ensureServiceWorkerRegistration();
+    if (!registration) {
+        return null;
     }
 
-    return null;
+    return getToken(messaging, {
+        vapidKey,
+        serviceWorkerRegistration: registration,
+    });
 }
 
 export { getToken, onMessage };

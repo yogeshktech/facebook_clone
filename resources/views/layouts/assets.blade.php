@@ -292,7 +292,20 @@
         });
 
         if ('serviceWorker' in navigator) {
-            navigator.serviceWorker.register('/sw.js', { scope: '/' }).catch(() => {});
+            (async () => {
+                const candidates = ['/firebase-messaging-sw.js', '/sw.js'];
+                for (const swPath of candidates) {
+                    try {
+                        const existing = await navigator.serviceWorker.getRegistration(swPath);
+                        const registration = existing || await navigator.serviceWorker.register(swPath, { scope: '/' });
+                        await navigator.serviceWorker.ready;
+                        await registration.update().catch(() => {});
+                        return;
+                    } catch (e) {
+                        console.warn('SW registration failed for ' + swPath, e);
+                    }
+                }
+            })();
         }
 
         if (!isPwaInstalled()) {

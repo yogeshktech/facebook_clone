@@ -1,0 +1,41 @@
+{
+  "expo": {
+    "name": "Newbook",
+    "slug": "newbook",
+    "sdkVersion": "52.0.0",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "light",
+    "splash": {
+      "image": "./assets/splash-icon.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#1877F2"
+    },
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.workarya.newbook"
+    },
+    "android": {
+      "adaptiveIcon": {
+        "backgroundColor": "#1877F2",
+        "foregroundImage": "./assets/android-icon-foreground.png",
+        "backgroundImage": "./assets/android-icon-background.png",
+        "monochromeImage": "./assets/android-icon-monochrome.png"
+      },
+      "package": "com.workarya.newbook",
+      "softwareKeyboardLayoutMode": "pan",
+      "predictiveBackGestureEnabled": false
+    },
+    "web": {
+      "favicon": "./assets/favicon.png"
+    },
+    "extra": {
+      "apiUrl": "https://newbook.workarya.com/api"
+    },
+    "plugins": [
+      "expo-asset",
+      "expo-font"
+    ]
+  }
+}

@@ -6,4 +6,5 @@ self.firebaseConfig = {
     messagingSenderId: @json(config('services.firebase.messaging_sender_id')),
     appId: @json(config('services.firebase.app_id')),
     measurementId: @json(config('services.firebase.measurement_id')),
+    vapidKey: @json(config('services.firebase.vapid_key')),
 };

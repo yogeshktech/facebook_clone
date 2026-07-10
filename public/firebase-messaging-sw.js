@@ -5,6 +5,38 @@ importScripts('/firebase-config.js');
 
 const CACHE_NAME = 'newbook-v1';
 
+function buildPushNotificationOptions(payload = {}) {
+    const notification = payload?.notification || {};
+    const data = payload?.data || {};
+    const title = notification.title || data.title || payload?.title || 'NEWBOOK';
+    const body = notification.body || data.body || payload?.body || '';
+    const url = data.url || payload?.fcmOptions?.link || '/notifications';
+    const tag = data.type ? `newbook-${data.type}` : (data.notification_id ? `newbook-${data.notification_id}` : 'newbook-push');
+
+    return {
+        title,
+        body,
+        url,
+        tag,
+        data: { url, ...data },
+    };
+}
+
+async function showPushNotification(payload = {}) {
+    const { title, body, url, tag, data } = buildPushNotificationOptions(payload);
+
+    await self.registration.showNotification(title, {
+        body,
+        icon: '/icons/icon-192.png',
+        badge: '/icons/icon-192.png',
+        vibrate: [150, 80, 150, 80, 150],
+        silent: false,
+        renotify: true,
+        tag,
+        data: { url, ...data },
+    });
+}
+
 self.addEventListener('install', (event) => {
     event.waitUntil(
         caches.open(CACHE_NAME).then((cache) =>
@@ -39,26 +71,22 @@ self.addEventListener('fetch', (event) => {
     );
 });
 
+self.addEventListener('push', (event) => {
+    try {
+        const payload = event.data?.json ? event.data.json() : null;
+        if (payload) {
+            event.waitUntil(showPushNotification(payload));
+        }
+    } catch (e) {
+        // Ignore invalid push payloads
+    }
+});
+
 if (self.firebaseConfig?.apiKey) {
     firebase.initializeApp(self.firebaseConfig);
     const messaging = firebase.messaging();
 
-    messaging.onBackgroundMessage((payload) => {
-        const title = payload.notification?.title || 'NEWBOOK';
-        const body = payload.notification?.body || '';
-        const url = payload.data?.url || payload.fcmOptions?.link || '/notifications';
-
-        return self.registration.showNotification(title, {
-            body,
-            icon: '/icons/icon-192.png',
-            badge: '/icons/icon-192.png',
-            vibrate: [150, 80, 150, 80, 150],
-            silent: false,
-            renotify: true,
-            tag: payload.data?.type ? `newbook-${payload.data.type}` : 'newbook-push',
-            data: { url },
-        });
-    });
+    messaging.onBackgroundMessage((payload) => showPushNotification(payload));
 }
 
 self.addEventListener('notificationclick', (event) => {
