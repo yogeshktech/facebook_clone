@@ -36,6 +36,13 @@ async function registerServiceWorkerForPush() {
         return null;
     }
 
+    try {
+        const registrations = await navigator.serviceWorker.getRegistrations();
+        await Promise.all(registrations.map((registration) => registration.update().catch(() => {})));
+    } catch (error) {
+        console.warn('Push service-worker update check failed:', error);
+    }
+
     const candidates = ['/firebase-messaging-sw.js', '/sw.js'];
 
     for (const swPath of candidates) {
@@ -76,9 +83,11 @@ export async function registerFirebaseMessaging(messaging, vapidKey) {
 
     const registration = await ensureServiceWorkerRegistration();
     if (!registration) {
+        console.warn('Push registration aborted: no service worker registration available.');
         return null;
     }
 
+    console.info('Registering FCM token with service worker scope:', registration.scope);
     return getToken(messaging, {
         vapidKey,
         serviceWorkerRegistration: registration,

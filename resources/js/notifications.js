@@ -334,6 +334,11 @@ export function initNotificationBell() {
 
 async function initFirebasePush() {
     try {
+        if ('serviceWorker' in navigator) {
+            const registrations = await navigator.serviceWorker.getRegistrations();
+            await Promise.all(registrations.map((registration) => registration.update().catch(() => {})));
+        }
+
         const { initFirebase, registerFirebaseMessaging, onMessage } = await import('./firebase');
         const firebase = await initFirebase();
 

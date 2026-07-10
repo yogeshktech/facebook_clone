@@ -1,4 +1,4 @@
-const CACHE_NAME = 'newbook-v4';
+const CACHE_NAME = 'newbook-v5';
 const PRECACHE_URLS = ['/manifest.json', '/icons/icon-192.png', '/icons/icon-512.png', '/images/newbook-logo.jpg'];
 
 function isRealtimePath(pathname) {
