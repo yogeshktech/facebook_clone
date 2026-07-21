@@ -183,6 +183,9 @@ class WebRTCCallManager {
         this._inboxTimer = null;
         this._seenSignalIds = new Set();
         this._echoRetryTimer = null;
+        this.isScreenSharing = false;
+        this.screenStream = null;
+        this._savedCameraTrack = null;
 
         this.overlay = null;
         this.minimizedEl = null;
@@ -203,6 +206,7 @@ class WebRTCCallManager {
         this.videoBtn = null;
         this.speakerBtn = null;
         this.flipBtn = null;
+        this.screenShareBtn = null;
         this.hangupBtn = null;
         this.minimizeBtn = null;
         this.pipWrap = null;
@@ -248,6 +252,7 @@ class WebRTCCallManager {
         this.videoBtn = document.getElementById('toggle-video-btn');
         this.speakerBtn = document.getElementById('speaker-btn');
         this.flipBtn = document.getElementById('flip-camera-btn');
+        this.screenShareBtn = document.getElementById('screen-share-btn');
         this.hangupBtn = document.getElementById('hangup-call-btn');
         this.minimizeBtn = document.getElementById('minimize-call-btn');
         this.pipWrap = document.getElementById('pip-video-wrap');
@@ -349,6 +354,10 @@ class WebRTCCallManager {
         this.flipBtn?.addEventListener('click', (e) => {
             e.preventDefault();
             this.flipCamera();
+        });
+        this.screenShareBtn?.addEventListener('click', (e) => {
+            e.preventDefault();
+            this.toggleScreenShare();
         });
         this.speakerBtn?.addEventListener('click', (e) => {
             e.preventDefault();
@@ -1488,6 +1497,11 @@ class WebRTCCallManager {
         this.setBtnVisible(this.speakerBtn, showMedia);
         this.setBtnVisible(this.videoBtn, showVideoBtns);
         this.setBtnVisible(this.flipBtn, showVideoBtns);
+        const showScreenShare = showVideoBtns && !!navigator.mediaDevices?.getDisplayMedia;
+        this.setBtnVisible(this.screenShareBtn, showScreenShare);
+        if (this.screenShareBtn) {
+            this.screenShareBtn.classList.toggle('hidden', !showScreenShare);
+        }
         if (this.minimizeBtn) {
             this.setBtnVisible(this.minimizeBtn, showHangup);
             this.minimizeBtn.classList.toggle('hidden', !showHangup);
@@ -2461,6 +2475,118 @@ class WebRTCCallManager {
         }
     }
 
+    async toggleScreenShare() {
+        if (!this.isVideo || !this.isCallActive || !this.localStream) return;
+
+        if (this.isScreenSharing) {
+            await this.stopScreenShare();
+        } else {
+            await this.startScreenShare();
+        }
+    }
+
+    async startScreenShare() {
+        if (!navigator.mediaDevices?.getDisplayMedia) {
+            alert('Screen sharing is not supported on this device/browser.');
+            return;
+        }
+
+        try {
+            const screenStream = await navigator.mediaDevices.getDisplayMedia({
+                video: true,
+                audio: false
+            });
+
+            const screenTrack = screenStream.getVideoTracks()[0];
+            if (!screenTrack) {
+                screenStream.getTracks().forEach((t) => t.stop());
+                return;
+            }
+
+            const sender = this.peerConnection?.getSenders().find((s) => s.track?.kind === 'video');
+            if (sender) {
+                await sender.replaceTrack(screenTrack);
+            }
+
+            const cameraTrack = this.localStream.getVideoTracks()[0];
+            if (cameraTrack) {
+                this.localStream.removeTrack(cameraTrack);
+                this._savedCameraTrack = cameraTrack;
+            }
+
+            this.localStream.addTrack(screenTrack);
+            this.screenStream = screenStream;
+            this.isScreenSharing = true;
+
+            this.updateScreenShareUI();
+            this.attachStreamsToVideos();
+
+            screenTrack.onended = () => {
+                this.stopScreenShare();
+            };
+
+        } catch (e) {
+            console.error('Failed to start screen share:', e);
+        }
+    }
+
+    async stopScreenShare() {
+        if (!this.isScreenSharing) return;
+
+        try {
+            const screenTrack = this.localStream.getVideoTracks()[0];
+            if (screenTrack) {
+                this.localStream.removeTrack(screenTrack);
+                screenTrack.stop();
+            }
+
+            if (this.screenStream) {
+                this.screenStream.getTracks().forEach((t) => t.stop());
+                this.screenStream = null;
+            }
+
+            let cameraTrack = this._savedCameraTrack;
+            if (!cameraTrack) {
+                try {
+                    const tempStream = await this.getLocalMedia(true);
+                    cameraTrack = tempStream.getVideoTracks()[0];
+                } catch (err) {
+                    console.error('Could not restore camera track:', err);
+                }
+            }
+
+            if (cameraTrack) {
+                this.localStream.addTrack(cameraTrack);
+                const sender = this.peerConnection?.getSenders().find((s) => s.track?.kind === 'video');
+                if (sender) {
+                    await sender.replaceTrack(cameraTrack);
+                }
+                this._savedCameraTrack = null;
+            }
+
+            this.isScreenSharing = false;
+            this.updateScreenShareUI();
+            this.attachStreamsToVideos();
+        } catch (e) {
+            console.error('Failed to stop screen share:', e);
+        }
+    }
+
+    updateScreenShareUI() {
+        if (!this.screenShareBtn) return;
+        
+        const active = this.isScreenSharing;
+        this.screenShareBtn.classList.toggle('active', active);
+        
+        const onIcon = this.screenShareBtn.querySelector('[data-icon-on]');
+        const offIcon = this.screenShareBtn.querySelector('[data-icon-off]');
+        
+        if (onIcon && offIcon) {
+            onIcon.style.display = active ? 'none' : '';
+            offIcon.style.display = active ? '' : 'none';
+        }
+    }
+
     swapVideos() {
         if (!this.isVideo || !this.isCallActive) return;
         this.videosSwapped = !this.videosSwapped;
@@ -2807,6 +2933,13 @@ class WebRTCCallManager {
             this.stopMediaStream(this.localStream);
             this.localStream = null;
         }
+
+        if (this.screenStream) {
+            this.stopMediaStream(this.screenStream);
+            this.screenStream = null;
+        }
+        this._savedCameraTrack = null;
+        this.isScreenSharing = false;
 
         this.stopRemotePlayback();
 

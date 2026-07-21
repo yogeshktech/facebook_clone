@@ -222,6 +222,16 @@
                     </svg>
                 </button>
 
+                <button type="button" id="screen-share-btn" class="call-ctrl-btn hidden" title="Share Screen">
+                    <svg data-icon-on width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"/>
+                    </svg>
+                    <svg data-icon-off width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" style="display:none;">
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"/>
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M3 3l18 18"/>
+                    </svg>
+                </button>
+
                 <button type="button" id="hangup-call-btn" title="End Call / Cut">
                     <svg width="26" height="26" fill="currentColor" viewBox="0 0 24 24"><path d="M12 9c-2.2 0-4.3.4-6.2 1.1-.6.2-1 .7-1.3 1.2l-1.2 1.2c-.5.5-.6 1.2-.3 1.8 1.1 2.2 2.7 4.1 4.7 5.5.5.4 1.2.3 1.6-.2l1.2-1.2c.4-.4.5-.9.3-1.4-.4-1.2-.6-2.4-.6-3.7v-.4c3.4-.6 6.9-.6 10.3 0v.4c0 1.3-.2 2.5-.6 3.7-.2.5-.1 1.1.3 1.4l1.2 1.2c.4.5 1.1.6 1.6.2 2-1.4 3.6-3.3 4.7-5.5.3-.6.2-1.3-.3-1.8l-1.2-1.2c-.3-.5-.7-1-1.3-1.2C16.3 9.4 14.2 9 12 9z"/></svg>
                 </button>
