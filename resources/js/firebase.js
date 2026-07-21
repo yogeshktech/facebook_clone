@@ -43,23 +43,10 @@ async function registerServiceWorkerForPush() {
         console.warn('Push service-worker update check failed:', error);
     }
 
-    const candidates = ['/firebase-messaging-sw.js', '/sw.js'];
-
-    for (const swPath of candidates) {
-        try {
-            const existing = await navigator.serviceWorker.getRegistration(swPath);
-            const registration = existing || await navigator.serviceWorker.register(swPath, { scope: '/' });
-            await navigator.serviceWorker.ready;
-            await registration.update().catch(() => {});
-            return registration;
-        } catch (error) {
-            console.warn(`Push service worker registration failed for ${swPath}:`, error);
-        }
-    }
-
     try {
-        const registration = await navigator.serviceWorker.getRegistration('/') || await navigator.serviceWorker.register('/sw.js', { scope: '/' });
+        const registration = await navigator.serviceWorker.register('/sw.js', { scope: '/' });
         await navigator.serviceWorker.ready;
+        await registration.update().catch(() => {});
         return registration;
     } catch (error) {
         console.warn('Push service worker registration failed:', error);

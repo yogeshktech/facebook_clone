@@ -86,22 +86,31 @@ export function playNotificationSound() {
     }
 }
 
-export async function showSystemNotification({ title, body, url, tag }) {
+export async function showSystemNotification({ title, body, url, tag, type, senderId }) {
     if (typeof Notification === 'undefined' || Notification.permission !== 'granted') {
         return;
     }
+
+    const isCall = type === 'incoming_call' || (typeof title === 'string' && title.toLowerCase().includes('incoming') && title.toLowerCase().includes('call'));
 
     const options = {
         body: body || '',
         icon: NOTIFICATION_ICON,
         badge: NOTIFICATION_ICON,
-        vibrate: [150, 80, 150],
+        vibrate: isCall ? [500, 110, 500, 110, 500, 110, 500, 110, 500] : [150, 80, 150],
         silent: false,
         renotify: true,
-        requireInteraction: false,
-        tag: tag || 'newbook-alert',
-        data: { url: url || '/notifications' },
+        requireInteraction: isCall ? true : false,
+        tag: isCall ? 'incoming-call' : (tag || 'newbook-alert'),
+        data: { url: url || '/notifications', sender_id: senderId, type },
     };
+
+    if (isCall) {
+        options.actions = [
+            { action: 'answer', title: 'Answer' },
+            { action: 'decline', title: 'Decline' }
+        ];
+    }
 
     try {
         const registration = await ensureServiceWorkerRegistration();
@@ -139,7 +148,14 @@ export async function alertUser(notification) {
     playNotificationSound();
 
     if (Notification.permission === 'granted') {
-        await showSystemNotification({ title, body, url, tag });
+        await showSystemNotification({
+            title,
+            body,
+            url,
+            tag,
+            type: notification.type,
+            senderId: notification.sender_id || notification.sender?.id
+        });
     }
 }
 
@@ -363,9 +379,11 @@ async function initFirebasePush() {
         onMessage(firebase.messaging, async (payload) => {
             const notification = {
                 id: payload.data?.notification_id ? parseInt(payload.data.notification_id, 10) : null,
-                title: payload.notification?.title,
-                message: payload.notification?.body,
+                title: payload.notification?.title || payload.data?.title,
+                message: payload.notification?.body || payload.data?.body,
                 url: payload.data?.url,
+                type: payload.data?.type,
+                sender_id: payload.data?.sender_id,
             };
             if (!notification.id || !loadNotifiedIds().has(notification.id)) {
                 await alertUser(notification);

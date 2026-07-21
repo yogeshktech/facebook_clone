@@ -61,6 +61,7 @@ class FirebasePushService
                     'url' => $notification->url ?? '',
                     'type' => $notification->type,
                     'reference_id' => (string) ($notification->reference_id ?? ''),
+                    'sender_id' => (string) $notification->sender_id,
                 ],
             ]);
 
@@ -90,6 +91,29 @@ class FirebasePushService
                 return;
             }
 
+            $isCall = ($notification->type === 'incoming_call');
+            $webpushNotification = [
+                'title' => $notification->title,
+                'body' => $notification->message,
+                'icon' => asset('icons/icon-192.png'),
+                'requireInteraction' => $isCall,
+                'tag' => $isCall ? 'incoming-call' : ($notification->id ? 'newbook-' . $notification->id : 'newbook-push'),
+            ];
+
+            if ($isCall) {
+                $webpushNotification['actions'] = [
+                    [
+                        'action' => 'answer',
+                        'title' => 'Answer',
+                    ],
+                    [
+                        'action' => 'decline',
+                        'title' => 'Decline',
+                    ],
+                ];
+                $webpushNotification['vibrate'] = [500, 110, 500, 110, 500, 110, 500, 110, 500];
+            }
+
             $response = Http::withToken($accessToken)->post(
                 "https://fcm.googleapis.com/v1/projects/{$projectId}/messages:send",
                 [
@@ -104,6 +128,7 @@ class FirebasePushService
                             'type' => $notification->type,
                             'reference_id' => (string) ($notification->reference_id ?? ''),
                             'notification_id' => (string) $notification->id,
+                            'sender_id' => (string) $notification->sender_id,
                         ],
                         'android' => [
                             'priority' => 'HIGH',
@@ -116,12 +141,7 @@ class FirebasePushService
                             'headers' => [
                                 'Urgency' => 'high',
                             ],
-                            'notification' => [
-                                'title' => $notification->title,
-                                'body' => $notification->message,
-                                'icon' => asset('icons/icon-192.png'),
-                                'requireInteraction' => false,
-                            ],
+                            'notification' => $webpushNotification,
                             'fcm_options' => [
                                 'link' => $notification->url ?? config('app.url'),
                             ],

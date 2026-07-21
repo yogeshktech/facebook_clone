@@ -35,16 +35,28 @@ function buildPushNotificationOptions(payload = {}) {
 async function showPushNotification(payload = {}) {
     const { title, body, url, tag, data } = buildPushNotificationOptions(payload);
 
-    await self.registration.showNotification(title, {
+    const isCall = data.type === 'incoming_call';
+
+    const options = {
         body,
         icon: '/icons/icon-192.png',
         badge: '/icons/icon-192.png',
-        vibrate: [150, 80, 150, 80, 150],
+        vibrate: isCall ? [500, 110, 500, 110, 500, 110, 500, 110, 500] : [150, 80, 150, 80, 150],
         silent: false,
         renotify: true,
-        tag,
+        requireInteraction: isCall ? true : false,
+        tag: isCall ? 'incoming-call' : tag,
         data: { url, ...data },
-    });
+    };
+
+    if (isCall) {
+        options.actions = [
+            { action: 'answer', title: 'Answer' },
+            { action: 'decline', title: 'Decline' }
+        ];
+    }
+
+    await self.registration.showNotification(title, options);
 }
 
 self.addEventListener('install', (event) => {
@@ -130,6 +142,57 @@ try {
 
 self.addEventListener('notificationclick', (event) => {
     event.notification.close();
+    
+    const action = event.action;
     const url = event.notification.data?.url || '/feed';
-    event.waitUntil(clients.openWindow(url));
+    const fromUserId = event.notification.data?.sender_id || event.notification.data?.from_user_id;
+
+    if (action === 'answer') {
+        event.waitUntil(
+            clients.matchAll({ type: 'window', includeUncontrolled: true }).then((windowClients) => {
+                for (let i = 0; i < windowClients.length; i++) {
+                    const client = windowClients[i];
+                    if ('focus' in client) {
+                        client.navigate(url);
+                        return client.focus();
+                    }
+                }
+                if (clients.openWindow) {
+                    return clients.openWindow(url);
+                }
+            })
+        );
+    } else if (action === 'decline') {
+        if (fromUserId) {
+            event.waitUntil(
+                fetch('/chat/call/signal', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Accept': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        to_user_id: parseInt(fromUserId, 10),
+                        type: 'decline',
+                        data: { reason: 'declined_from_notification' }
+                    })
+                }).catch(() => {})
+            );
+        }
+    } else {
+        event.waitUntil(
+            clients.matchAll({ type: 'window', includeUncontrolled: true }).then((windowClients) => {
+                for (let i = 0; i < windowClients.length; i++) {
+                    const client = windowClients[i];
+                    if ('focus' in client) {
+                        client.navigate(url);
+                        return client.focus();
+                    }
+                }
+                if (clients.openWindow) {
+                    return clients.openWindow(url);
+                }
+            })
+        );
+    }
 });
