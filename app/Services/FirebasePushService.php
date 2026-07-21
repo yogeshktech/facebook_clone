@@ -66,6 +66,7 @@ class FirebasePushService
 
             if ($response->failed()) {
                 Log::warning('FCM legacy push failed', ['body' => $response->body()]);
+                $this->forgetInvalidToken($token, $response->json());
             }
         } catch (\Throwable $e) {
             Log::warning('FCM legacy push error: '.$e->getMessage());
@@ -89,7 +90,7 @@ class FirebasePushService
                 return;
             }
 
-            Http::withToken($accessToken)->post(
+            $response = Http::withToken($accessToken)->post(
                 "https://fcm.googleapis.com/v1/projects/{$projectId}/messages:send",
                 [
                     'message' => [
@@ -102,6 +103,7 @@ class FirebasePushService
                             'url' => $notification->url ?? '',
                             'type' => $notification->type,
                             'reference_id' => (string) ($notification->reference_id ?? ''),
+                            'notification_id' => (string) $notification->id,
                         ],
                         'android' => [
                             'priority' => 'HIGH',
@@ -127,9 +129,29 @@ class FirebasePushService
                     ],
                 ]
             );
+
+            if ($response->failed()) {
+                Log::warning('FCM HTTP v1 push failed', [
+                    'status' => $response->status(),
+                    'body' => $response->body(),
+                ]);
+                $this->forgetInvalidToken($token, $response->json());
+            }
         } catch (\Throwable $e) {
             Log::warning('FCM HTTP v1 push error: '.$e->getMessage());
         }
+    }
+
+    private function forgetInvalidToken(string $token, mixed $payload): void
+    {
+        $errorCode = data_get($payload, 'error.details.0.errorCode')
+            ?? data_get($payload, 'error.status');
+
+        if (! in_array($errorCode, ['UNREGISTERED', 'NOT_FOUND', 'INVALID_ARGUMENT'], true)) {
+            return;
+        }
+
+        DeviceToken::where('token', $token)->delete();
     }
 
     private function getAccessToken(array $credentials): ?string

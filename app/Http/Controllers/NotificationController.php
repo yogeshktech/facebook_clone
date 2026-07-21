@@ -12,6 +12,7 @@ class NotificationController extends Controller
 {
     public function index(Request $request): View|JsonResponse
     {
+       
         $notifications = SocialNotification::where('receiver_id', $request->user()->id)
             ->with('sender')
             ->latest()
