@@ -1,0 +1,9 @@
+{
+  "appId": "com.newbook.app",
+  "appName": "Newbook",
+  "webDir": "public",
+  "server": {
+    "url": "https://newbook.workarya.com",
+    "cleartext": true
+  }
+}

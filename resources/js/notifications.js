@@ -1,5 +1,7 @@
 import './echo';
 import { ensureServiceWorkerRegistration } from './firebase';
+import { Capacitor } from '@capacitor/core';
+import { PushNotifications } from '@capacitor/push-notifications';
 
 const csrfToken = () => document.querySelector('meta[name="csrf-token"]')?.content;
 
@@ -272,6 +274,11 @@ function showPermissionBanner() {
 export async function enablePushNotifications() {
     hidePermissionBanner();
 
+    if (window.Capacitor && window.Capacitor.isNativePlatform()) {
+        await initCapacitorPush();
+        return;
+    }
+
     if (typeof Notification === 'undefined') {
         alert('Notifications are not supported in this browser.');
         return;
@@ -341,11 +348,14 @@ export function initNotificationBell() {
         }
     }
 
-    if (Notification.permission === 'default') {
-        setTimeout(showPermissionBanner, 3000);
+    if (window.Capacitor && window.Capacitor.isNativePlatform()) {
+        initCapacitorPush();
+    } else {
+        if (Notification.permission === 'default') {
+            setTimeout(showPermissionBanner, 3000);
+        }
+        initFirebasePush();
     }
-
-    initFirebasePush();
 }
 
 async function initFirebasePush() {
@@ -392,5 +402,66 @@ async function initFirebasePush() {
         });
     } catch (e) {
         console.warn('Firebase push not available:', e);
+    }
+}
+
+async function initCapacitorPush() {
+    try {
+        let permStatus = await PushNotifications.checkPermissions();
+
+        if (permStatus.receive === 'prompt') {
+            permStatus = await PushNotifications.requestPermissions();
+        }
+
+        if (permStatus.receive !== 'granted') {
+            console.warn('Native push notification permission denied.');
+            return;
+        }
+
+        await PushNotifications.register();
+
+        PushNotifications.addListener('registration', async (token) => {
+            if (token?.value) {
+                await fetch('/notifications/device-token', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-CSRF-TOKEN': csrfToken(),
+                        'Accept': 'application/json',
+                    },
+                    body: JSON.stringify({ token: token.value, platform: 'android' }),
+                });
+                console.info('Native FCM device token registered successfully.');
+            }
+        });
+
+        PushNotifications.addListener('registrationError', (error) => {
+            console.error('Error on native push registration: ', error);
+        });
+
+        PushNotifications.addListener('pushNotificationReceived', async (notification) => {
+            const data = notification.data || {};
+            const alertNotification = {
+                id: data.notification_id ? parseInt(data.notification_id, 10) : null,
+                title: notification.title || data.title,
+                message: notification.body || data.body,
+                url: data.url,
+                type: data.type,
+                sender_id: data.sender_id,
+            };
+            await alertUser(alertNotification);
+            await refreshNotificationUI({ bootstrap: false });
+        });
+
+        PushNotifications.addListener('pushNotificationActionPerformed', (action) => {
+            const data = action.notification?.data || {};
+            const url = data.url;
+            if (url) {
+                window.location.href = url;
+            }
+        });
+
+    } catch (e) {
+        console.warn('Failed to initialize Capacitor native push notifications:', e);
     }
 }
