@@ -529,10 +529,12 @@
 @php
     $callsJsPublic = public_path('js/calls.js');
     $callsJsSource = resource_path('js/calls.js');
-    // Prefer public copy; fall back to resources and auto-publish once.
-    if (! file_exists($callsJsPublic) && file_exists($callsJsSource)) {
-        @mkdir(dirname($callsJsPublic), 0755, true);
-        @copy($callsJsSource, $callsJsPublic);
+    // Copy if public version doesn't exist, OR if source version is newer than public version.
+    if (file_exists($callsJsSource)) {
+        if (!file_exists($callsJsPublic) || filemtime($callsJsSource) > filemtime($callsJsPublic)) {
+            @mkdir(dirname($callsJsPublic), 0755, true);
+            @copy($callsJsSource, $callsJsPublic);
+        }
     }
     $callsJsV = file_exists($callsJsPublic) ? filemtime($callsJsPublic) : time();
 @endphp

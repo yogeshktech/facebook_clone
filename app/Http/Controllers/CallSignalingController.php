@@ -124,15 +124,11 @@ class CallSignalingController extends Controller
             $inbox->push($fromUser->id, $payload);
         }
 
-        // After answer, drop pending offers for callee so they don't re-ring.
-        if ($type === 'answer') {
-            try {
-                \App\Models\CallSignal::query()
-                    ->where('to_user_id', $fromUser->id)
-                    ->where('type', 'offer')
-                    ->delete();
-            } catch (\Throwable $e) {
-            }
+        // Clean up pending offers when call is answered, declined or hung up
+        if ($type === 'answer' || $type === 'decline') {
+            $inbox->clearPendingOffers($fromUser->id);
+        } elseif ($type === 'hangup') {
+            $inbox->clearPendingOffers($toUserId);
         }
 
         $broadcastSuccess = false;

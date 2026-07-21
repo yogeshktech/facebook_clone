@@ -117,6 +117,29 @@ class CallInboxService
         }
     }
 
+    public function clearPendingOffers(int $userId): void
+    {
+        try {
+            CallSignal::query()
+                ->where('to_user_id', $userId)
+                ->where('type', 'offer')
+                ->delete();
+        } catch (\Throwable $e) {
+        }
+
+        try {
+            $key = $this->cacheKey($userId);
+            $inbox = Cache::get($key, []);
+            if (is_array($inbox)) {
+                $filtered = array_values(array_filter($inbox, function ($item) {
+                    return ($item['type'] ?? '') !== 'offer';
+                }));
+                Cache::put($key, $filtered, now()->addSeconds(self::TTL_SECONDS));
+            }
+        } catch (\Throwable $e) {
+        }
+    }
+
     private function cacheKey(int $userId): string
     {
         return "call_inbox:{$userId}";

@@ -187,7 +187,8 @@
 #call-overlay[data-call-phase="active"] #toggle-mute-btn,
 #call-overlay[data-call-phase="active"] #speaker-btn,
 #call-overlay[data-call-phase="active"][data-call-video="1"] #toggle-video-btn,
-#call-overlay[data-call-phase="active"][data-call-video="1"] #flip-camera-btn {
+#call-overlay[data-call-phase="active"][data-call-video="1"] #flip-camera-btn,
+#call-overlay[data-call-phase="active"][data-call-video="1"] #screen-share-btn.call-btn-visible {
     display: flex !important;
     visibility: visible !important;
     opacity: 1 !important;
@@ -223,7 +224,8 @@
 #toggle-mute-btn,
 #speaker-btn,
 #toggle-video-btn,
-#flip-camera-btn {
+#flip-camera-btn,
+#screen-share-btn {
     width: 3rem !important;
     height: 3rem !important;
     border-radius: 9999px !important;
@@ -231,6 +233,11 @@
     color: #fff !important;
     border: 1px solid rgba(255, 255, 255, 0.12) !important;
     cursor: pointer !important;
+}
+
+#screen-share-btn.active {
+    background: #2563eb !important;
+    box-shadow: 0 4px 15px rgba(37, 99, 235, 0.45) !important;
 }
 
 #call-overlay[data-call-phase="outgoing"] #minimize-call-btn,
